@@ -1240,3 +1240,32 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeS
     let custom_sni_str = env.get_string(&custom_sni).unwrap().into();
     engine.set_sni_config(sni_enabled != 0, custom_sni_str, tor_enabled != 0);
 }
+
+// Add methods to VpnEngine
+impl VpnEngine {
+    pub fn set_sni_config(&mut self, sni_enabled: bool, custom_sni: String, tor_enabled: bool) {
+        self.sni_enabled = sni_enabled;
+        self.custom_sni_hostname = custom_sni;
+        self.tor_enabled = tor_enabled;
+        if tor_enabled && self.tor_manager.get_client().is_none() {
+            let config = TorClientConfig::default();
+            let tor_manager = self.tor_manager.clone();
+            tokio::spawn(async move {
+                let _ = tor_manager.start(config).await;
+            });
+        } else if !tor_enabled && self.tor_manager.get_client().is_some() {
+            let tor_manager = self.tor_manager.clone();
+            tokio::spawn(async move {
+                tor_manager.stop().await;
+            });
+        }
+    }
+
+    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
+        self.tor_manager.start(config).await
+    }
+
+    pub async fn stop_tor(&mut self) {
+        self.tor_manager.stop().await
+    }
+}
