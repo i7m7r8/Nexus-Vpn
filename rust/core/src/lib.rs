@@ -137,6 +137,7 @@ impl EncryptionEngine {
             cipher_suite,
             rng: Arc::new(Mutex::new(rng)),
             }
+    }
 
     pub async fn encrypt_chacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
         let mut rng = self.rng.lock().await;
@@ -192,6 +193,7 @@ impl EncryptionEngine {
                 // Use ChaCha20 as primary with AES fallback
                 self.encrypt_chacha20(plaintext).await
             }
+        }
     }
 
     pub async fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, String> {
@@ -210,12 +212,14 @@ impl EncryptionEngine {
             }
             CipherSuite::Both => self.decrypt_chacha20(ciphertext).await,
         }
+    }
 
     pub async fn derive_session_key(&self, seed: &[u8]) -> Vec<u8> {
         let mut hasher = Sha256::new();
         hasher.update(seed);
         hasher.finalize().to_vec()
     }
+}
 
 // ============================================================================
 // ======================== SNI HANDLER (TLS CLIENT HELLO) ====================
@@ -240,6 +244,7 @@ impl SniHandler {
             cipher_suites,
             rotation_index: Arc::new(Mutex::new(0)),
             }
+    }
 
     pub async fn build_client_hello(&self, hostname: &str, use_sni: bool) -> Result<Vec<u8>, String> {
         if !self.config.enabled {
@@ -294,6 +299,7 @@ impl SniHandler {
             TlsVersion::Auto => {
                 client_hello.extend_from_slice(&[0x03, 0x03]);
             }
+        }
 
         // Random (32 bytes)
         let mut rng = StdRng::from_entropy();
@@ -401,6 +407,7 @@ impl SniHandler {
         *idx = (*idx + 1) % self.cipher_suites.len();
         self.cipher_suites[*idx].clone()
     }
+}
 
 // ============================================================================
 // ======================== TOR CLIENT INTEGRATION ===========================
@@ -425,6 +432,7 @@ impl ArtiTorClient {
             current_circuit: Arc::new(Mutex::new(None)),
             connection_count: Arc::new(Mutex::new(0)),
             }
+    }
 
     pub async fn initialize(&self) -> Result<(), String> {
         if !self.config.enabled {
@@ -494,6 +502,7 @@ impl ArtiTorClient {
     pub async fn get_connection_count(&self) -> u64 {
         *self.connection_count.lock().await
     }
+}
 
 // ============================================================================
 // ======================== VPN CONNECTION MANAGER ============================
@@ -551,6 +560,7 @@ impl VpnConnection {
             packet_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(1024))),
             connection_logs: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
         }
+    }
 
     pub async fn connect(&self) -> Result<(), String> {
         *self.state.lock().await = ConnectionState::Connecting;
@@ -568,6 +578,7 @@ impl VpnConnection {
             _ => {
                 self.connect_standard().await?;
             }
+        }
 
         *self.state.lock().await = ConnectionState::Connected;
         self.log_connection_event("Connection established", "CONNECTED".to_string())
@@ -664,6 +675,7 @@ impl VpnConnection {
         } else {
             Err("No packets available".to_string())
         }
+    }
 
     pub async fn get_stats(&self) -> VpnConnectionStats {
         self.stats.lock().await.clone()
@@ -691,6 +703,7 @@ impl VpnConnection {
         if logs.len() > 100 {
             logs.pop_front();
         }
+    }
 
     pub async fn get_connection_logs(&self) -> Vec<ConnectionLog> {
         self.connection_logs.lock().await.iter().cloned().collect()
@@ -707,6 +720,7 @@ impl VpnConnection {
 
         Ok(())
     }
+}
 
 // ============================================================================
 // ======================== VPN ENGINE (MAIN CONTROLLER) =====================
@@ -732,19 +746,22 @@ impl TorManager {
         if let Some(client) = self.client.take() {
             drop(client);
         }
+    }
 
     pub fn get_client(&self) -> Option<Arc<ArtiTorClient>> {
         self.client.clone()
     }
+}
 
 impl Default for TorManager {
     fn default() -> Self {
         Self { client: None,
             }
+    }
 }
 
 
-pub struct VpnEngine {
+pub struct VpnEngine { {
     servers: Arc<RwLock<HashMap<String, VpnServer>>>,
     current_connection: Arc<Mutex<Option<Arc<VpnConnection>>>>,
     encryption: Arc<EncryptionEngine>,
@@ -801,6 +818,7 @@ impl VpnEngine {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(stream)
         }
+    }
 
 });
         } else if !tor_enabled && self.tor_manager.get_client().is_some() {
@@ -809,6 +827,7 @@ impl VpnEngine {
                 tor_manager.stop().await;
             });
         }
+    }
 
     pub async fn start_tor(&mut self, config: ArtiTorClientConfig) -> Result<(), arti_client::Error> {
         self.tor_manager.start(config).await
@@ -817,13 +836,17 @@ impl VpnEngine {
     pub async fn stop_tor(&mut self) {
         self.tor_manager.stop().await
     }
+
+}
         Ok(())
     }
 
     /// Stop the Tor client.
     pub async fn stop_tor(&mut self) {
         self.tor_manager.stop().await;
-    })),
+    }
+
+})),
             tor_config: Arc::new(RwLock::new(TorConfig {
                 enabled: false,
                 bridge_enabled: false,
@@ -842,6 +865,7 @@ impl VpnEngine {
             dns_cache: Arc::new(RwLock::new(HashMap::new())),
             ipv6_leakage_prevention: Arc::new(Mutex::new(true)),
         }
+    }
 
     pub async fn add_server(&self, server: VpnServer) -> Result<(), String> {
         let mut servers = self.servers.write().await;
@@ -948,9 +972,11 @@ impl VpnEngine {
                         if *auto_reconnect.lock().await {
                             let _ = conn.reconnect().await;
                         }
+                    }
                 } else {
                     break;
                 }
+            }
         });
 
         let mut task = self.background_task.lock().await;
@@ -1020,6 +1046,7 @@ impl VpnEngine {
         } else {
             vec![]
         }
+    }
 
     pub async fn perform_leak_test(&self) -> Result<bool, String> {
         let ipv6_prevention = *self.ipv6_leakage_prevention.lock().await;
@@ -1031,6 +1058,7 @@ impl VpnEngine {
         } else {
             Ok(false)
         }
+    }
 
     pub async fn test_dns_leaks(&self) -> Result<Vec<String>, String> {
         // Return list of detected DNS leaks (empty if none)
@@ -1048,6 +1076,7 @@ impl VpnEngine {
             cached_servers: self.servers.read().await.len(),
             connection_logs_count: self.get_connection_logs().await.len(),
         }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1147,6 +1176,7 @@ use std::sync::Arc;
         let servers = engine.get_servers().await;
         assert_eq!(servers.len(), 1);
     }
+}
 
 // ============================================================================
 // EOF - Production Ready VPN Engine
@@ -1168,6 +1198,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeS
     if let Err(e) = result {
         android_logger::log(LogLevel::Error, "NexusVpn", &format!("Failed to start Tor: {}", e));
     }
+}
 
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeStopTor(
@@ -1215,6 +1246,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeS
     if let Err(e) = result {
         error!("Failed to start Tor: {}", e);
     }
+}
 
 
 
