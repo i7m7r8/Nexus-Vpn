@@ -1,0 +1,18 @@
+#!/bin/bash
+# Update version numbers in Cargo.toml
+sed -i 's/tokio = { version = "1.35"/tokio = { version = "1.44"/' rust/core/Cargo.toml
+sed -i 's/tokio-util = "0.7"/tokio-util = "0.7"/' rust/core/Cargo.toml  # stays same
+sed -i 's/rustls = "0.21"/rustls = "0.21"/' rust/core/Cargo.toml  # keep 0.21 for compatibility
+sed -i 's/chacha20poly1305 = "0.10"/chacha20poly1305 = "0.10"/' rust/core/Cargo.toml
+sed -i 's/aes-gcm = "0.10"/aes-gcm = "0.10"/' rust/core/Cargo.toml
+sed -i 's/sha2 = "0.10"/sha2 = "0.10"/' rust/core/Cargo.toml
+sed -i 's/rand = "0.8"/rand = "0.8"/' rust/core/Cargo.toml
+sed -i 's/derivative = "2.2"/derivative = "2.2"/' rust/core/Cargo.toml
+sed -i 's/futures = "0.3"/futures = "0.3"/' rust/core/Cargo.toml
+sed -i 's/jni = "0.21"/jni = "0.21"/' rust/core/Cargo.toml
+sed -i 's/android_logger = "0.13"/android_logger = "0.14"/' rust/core/Cargo.toml
+sed -i 's/log = "0.4"/log = "0.4"/' rust/core/Cargo.toml
+
+# Update Android-specific dependencies
+sed -i 's/ndk = "0.8"/ndk = "0.9"/' rust/core/Cargo.toml
+sed -i 's/ndk-glue = "0.8"/ndk-glue = "0.8.0"/' rust/core/Cargo.toml
