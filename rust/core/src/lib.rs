@@ -1,5 +1,5 @@
-use arti_client::ArtiTorClient as ArtiArtiTorClient;
-use arti_client::ArtiTorClientConfig;
+use arti_client::TorClient;
+use arti_client::TorClientConfig;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust)
 // Author: Security Team | Build: Production Ready
@@ -832,18 +832,12 @@ impl VpnEngine {
         self.tor_manager.start(config).await
     }
 
-    pub async fn stop_tor(&mut self) {
-        self.tor_manager.stop().await
-    }
 
 }
         Ok(())
     }
 
     /// Stop the Tor client.
-    pub async fn stop_tor(&mut self) {
-        self.tor_manager.stop().await;
-    }
 
 })),
             tor_config: Arc::new(RwLock::new(TorConfig {
