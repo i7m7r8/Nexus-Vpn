@@ -656,7 +656,7 @@ fun NexusVpnApp(
 fun StatCard(label: String, value: String) {
     Card(
         modifier = Modifier
-            .weight(1f)
+            Modifier.fillMaxWidth().height(48.dp)
             .clip(RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = ProtonDarkBg),
         shape = RoundedCornerShape(12.dp)
