@@ -7,9 +7,10 @@ use tokio::sync::{RwLock, Mutex, mpsc};
 use tokio::time::{interval, Duration, sleep};
 use tokio::task::JoinHandle;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use rand::SeedableRng;
+use rand::rngs::StdRng;
 use rand::Rng;
 use sha2::{Sha256, Digest};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
@@ -261,8 +262,7 @@ impl SniHandler {
     }
 
     async fn generate_randomized_hostname(&self, base: &str) -> String {
-        let rng = std::sync::Mutex::new(rand::thread_rng());
-        let mut rng = rng.lock().unwrap();
+        let mut rng = StdRng::from_entropy();
         let random_prefix: String = (0..8)
             .map(|_| {
                 let idx = rng.gen_range(0..26);
@@ -300,8 +300,7 @@ impl SniHandler {
         }
 
         // Random (32 bytes)
-        let rng = std::sync::Mutex::new(rand::thread_rng());
-        let mut rng = rng.lock().unwrap();
+        let mut rng = StdRng::from_entropy();
         let random_bytes: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
         client_hello.extend_from_slice(&random_bytes);
 
@@ -368,8 +367,7 @@ impl SniHandler {
     }
 
     fn add_key_share_extension(&self, hello: &mut Vec<u8>) -> Result<(), String> {
-        let rng = std::sync::Mutex::new(rand::thread_rng());
-        let mut rng = rng.lock().unwrap();
+        let mut rng = StdRng::from_entropy();
         let key_exchange: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
 
         hello.extend_from_slice(&(0x0033u16).to_be_bytes()); // Key Share
@@ -444,8 +442,7 @@ impl TorClient {
     }
 
     pub async fn build_circuit(&self) -> Result<String, String> {
-        let rng = std::sync::Mutex::new(rand::thread_rng());
-        let mut rng = rng.lock().unwrap();
+        let mut rng = StdRng::from_entropy();
         let circuit_id: String = (0..16)
             .map(|_| format!("{:x}", rng.gen::<u8>() % 16))
             .collect();
@@ -477,8 +474,7 @@ impl TorClient {
     }
 
     async fn select_random_node(&self) -> String {
-        let rng = std::sync::Mutex::new(rand::thread_rng());
-        let mut rng = rng.lock().unwrap();
+        let mut rng = StdRng::from_entropy();
         let nodes = vec!["GuardNode1", "GuardNode2", "GuardNode3"];
         let idx = rng.gen_range(0..nodes.len());
         nodes[idx].to_string()
