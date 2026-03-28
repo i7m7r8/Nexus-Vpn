@@ -445,11 +445,17 @@ impl TorClient {
             .map(|_| format!("{:x}", rng.gen::<u8>() % 16))
             .collect();
 
-        let guard = self.config.guard_node.clone()
-            .unwrap_or_else(|| self.select_random_node().await);
+        let guard = if let Some(node) = self.config.guard_node.clone() {
+            node
+        } else {
+            self.select_random_node().await
+        };
 
-        let exit = self.config.exit_node.clone()
-            .unwrap_or_else(|| self.select_random_node().await);
+        let exit = if let Some(node) = self.config.exit_node.clone() {
+            node
+        } else {
+            self.select_random_node().await
+        };
 
         let circuit = format!("{}->middle->{}", guard, exit);
 
