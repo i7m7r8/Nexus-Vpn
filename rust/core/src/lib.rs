@@ -133,8 +133,8 @@ impl EncryptionEngine {
             chacha_key,
             aes_key,
             cipher_suite,
-            rng: Arc::new(Mutex::new(rng)),
-        }
+            rng: Arc::new(Mutex::new(rng)),,
+            tor_manager: TorManager::default()}
     }
 
     pub async fn encrypt_chacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
@@ -240,8 +240,8 @@ impl SniHandler {
         Self {
             config,
             cipher_suites,
-            rotation_index: Arc::new(Mutex::new(0)),
-        }
+            rotation_index: Arc::new(Mutex::new(0)),,
+            tor_manager: TorManager::default()}
     }
 
     pub async fn build_client_hello(&self, hostname: &str, use_sni: bool) -> Result<Vec<u8>, String> {
@@ -428,8 +428,8 @@ impl TorClient {
             config,
             bridges,
             current_circuit: Arc::new(Mutex::new(None)),
-            connection_count: Arc::new(Mutex::new(0)),
-        }
+            connection_count: Arc::new(Mutex::new(0)),,
+            tor_manager: TorManager::default()}
     }
 
     pub async fn initialize(&self) -> Result<(), String> {
@@ -550,8 +550,8 @@ impl VpnConnection {
                 latency_ms: 0,
                 connection_duration_secs: 0,
                 packet_loss_percent: 0.0,
-                uptime_percent: 100.0,
-            })),
+                uptime_percent: 100.0,,
+            tor_manager: TorManager::default()})),
             encryption,
             sni_handler,
             tor_client,
@@ -731,11 +731,14 @@ pub struct TorManager {
 }
 
 impl TorManager {
+    
     pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
-        let client = TorClient::create_bootstrapped(config).await?;
+        let client = TorClient::create(config)?;
+        let client = client.bootstrap().await?;
         self.client = Some(Arc::new(client));
         Ok(())
     }
+
 
     pub async fn stop(&mut self) {
         if let Some(client) = self.client.take() {
@@ -750,7 +753,8 @@ impl TorManager {
 
 impl Default for TorManager {
     fn default() -> Self {
-        Self { client: None }
+        Self { client: None,
+            tor_manager: TorManager::default()}
     }
 }
 
@@ -767,7 +771,7 @@ pub struct VpnEngine {
     auto_reconnect: Arc<Mutex<bool>>,
     background_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     dns_cache: Arc<RwLock<HashMap<String, IpAddr>>>,
-    ipv6_leakage_prevention: Arc<Mutex<bool>>,,
+    ipv6_leakage_prevention: Arc<Mutex<bool>>,
     tor_manager: TorManager,
 }
 
@@ -785,7 +789,7 @@ impl VpnEngine {
                 cipher_suite: cipher_suite.clone(),
                 tls_version: TlsVersion::V1_3,
                 custom_user_agent: None,
-                fingerprint_resistant: true,,
+                fingerprint_resistant: true,
             tor_manager: TorManager::default(),
     /// Start the Tor client if it's not already running.
     pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
@@ -1216,3 +1220,10 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeS
     engine.set_sni_config(sni_enabled != 0, custom_sni_str, tor_enabled != 0);
 }
 use futures::executor::block_on;
+
+use jni::sys::{jlong, jboolean};
+use jni::objects::{JClass, JString};
+use jni::JNIEnv;
+use arti_client::{TorClient, TorClientConfig, TorClientConfigBuilder};
+use log::error;
+
