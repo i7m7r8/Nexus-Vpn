@@ -9,7 +9,7 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.44", features = ["full"] }
 tokio-util = "0.7"
 rustls = "0.21"
 chacha20poly1305 = "0.10"
@@ -19,12 +19,12 @@ rand = "0.8"
 derivative = "2.2"
 futures = "0.3"
 jni = "0.21"
-android_logger = "0.13"
+android_logger = "0.14"
 log = "0.4"
 
 [target.'cfg(target_os = "android")'.dependencies]
-ndk = "0.8"
-ndk-glue = "0.8"
+ndk = "0.9"
+ndk-glue = "0.8.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
