@@ -724,6 +724,37 @@ impl VpnConnection {
 // ======================== VPN ENGINE (MAIN CONTROLLER) =====================
 // ============================================================================
 
+
+/// Manages the Arti Tor client lifecycle.
+pub struct TorManager {
+    client: Option<Arc<TorClient>>,
+}
+
+impl TorManager {
+    pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
+        let client = TorClient::create_bootstrapped(config).await?;
+        self.client = Some(Arc::new(client));
+        Ok(())
+    }
+
+    pub async fn stop(&mut self) {
+        if let Some(client) = self.client.take() {
+            drop(client);
+        }
+    }
+
+    pub fn get_client(&self) -> Option<Arc<TorClient>> {
+        self.client.clone()
+    }
+}
+
+impl Default for TorManager {
+    fn default() -> Self {
+        Self { client: None }
+    }
+}
+
+
 pub struct VpnEngine {
     servers: Arc<RwLock<HashMap<String, VpnServer>>>,
     current_connection: Arc<Mutex<Option<Arc<VpnConnection>>>>,
@@ -736,8 +767,9 @@ pub struct VpnEngine {
     auto_reconnect: Arc<Mutex<bool>>,
     background_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     dns_cache: Arc<RwLock<HashMap<String, IpAddr>>>,
-    ipv6_leakage_prevention: Arc<Mutex<bool>>,
-}
+    ipv6_leakage_prevention: Arc<Mutex<bool>>,,
+    tor_manager: TorManager,
+}}
 
 impl VpnEngine {
     pub fn new(cipher_suite: CipherSuite) -> Self {
@@ -753,8 +785,22 @@ impl VpnEngine {
                 cipher_suite: cipher_suite.clone(),
                 tls_version: TlsVersion::V1_3,
                 custom_user_agent: None,
-                fingerprint_resistant: true,
-            })),
+                fingerprint_resistant: true,,
+            tor_manager: TorManager::default(),
+    /// Start the Tor client if it's not already running.
+    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
+        if self.tor_manager.get_client().is_none() {
+            self.tor_manager.start(config).await?;
+        }
+        Ok(())
+    }
+
+    /// Stop the Tor client.
+    pub async fn stop_tor(&mut self) {
+        self.tor_manager.stop().await;
+    }
+
+})),
             tor_config: Arc::new(RwLock::new(TorConfig {
                 enabled: false,
                 bridge_enabled: false,
@@ -1006,6 +1052,11 @@ pub struct EngineStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+// Arti integration
+use arti_client::{TorClient, TorClientConfig};
+use std::sync::Arc;
+
 
     #[tokio::test]
     async fn test_encryption_engine_chacha20() {
