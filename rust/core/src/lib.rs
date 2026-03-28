@@ -769,7 +769,7 @@ pub struct VpnEngine {
     dns_cache: Arc<RwLock<HashMap<String, IpAddr>>>,
     ipv6_leakage_prevention: Arc<Mutex<bool>>,,
     tor_manager: TorManager,
-}}
+}
 
 impl VpnEngine {
     pub fn new(cipher_suite: CipherSuite) -> Self {
