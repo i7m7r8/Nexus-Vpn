@@ -19,10 +19,11 @@ futures = "0.3"
 jni = "0.21"
 android_logger = "0.14"
 log = "0.4"
+arti-client = { version = "2.1.0", features = ["tokio-runtime"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
-ndk = "0.8"
-ndk-glue = "0.7"
+ndk = "0.9"
+ndk-glue = "0.8"
 
 [dev-dependencies]
 criterion = "0.5"

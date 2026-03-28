@@ -31,7 +31,7 @@ android {
         compose true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion '1.7.0'   // Compatible with Kotlin 2.3.20
+        kotlinCompilerExtensionVersion '1.7.0'
     }
 }
 
