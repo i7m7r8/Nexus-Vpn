@@ -889,3 +889,4 @@ fun ConnectionLogsModal(onDismiss: () -> Unit) {
         containerColor = ProtonCardBg
     )
 }
+
