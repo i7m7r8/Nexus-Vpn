@@ -736,7 +736,7 @@ impl VpnEngine {
         Self {
             servers: Arc::new(RwLock::new(HashMap::new())),
             current_connection: Arc::new(Mutex::new(None)),
-            encryption: Arc::new(EncryptionEngine::new(cipher_suite.clone()),
+            encryption: Arc::new(EncryptionEngine::new(cipher_suite)),
             sni_config: Arc::new(RwLock::new(SniConfig {
                 enabled: true,
                 custom_hostname: None,
