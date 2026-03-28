@@ -761,7 +761,7 @@ impl Default for TorManager {
 }
 
 
-pub struct VpnEngine {pub struct VpnEngine {
+pub struct VpnEngine { {
     servers: Arc<RwLock<HashMap<String, VpnServer>>>,
     current_connection: Arc<Mutex<Option<Arc<VpnConnection>>>>,
     encryption: Arc<EncryptionEngine>,
