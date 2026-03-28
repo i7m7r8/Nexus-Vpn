@@ -1,3 +1,5 @@
+use arti_client::ArtiTorClient as ArtiArtiTorClient;
+use arti_client::ArtiTorClientConfig;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust)
 // Author: Security Team | Build: Production Ready
@@ -1184,24 +1186,91 @@ use std::sync::Arc;
 // =================== JNI Bindings ===================
 
 #[no_mangle]
-
-// Ensure VpnEngine has all required fields
-impl VpnEngine {
-    pub fn set_sni_config(&mut self, sni_enabled: bool, custom_sni: String, tor_enabled: bool) {
-        self.sni_enabled = sni_enabled;
-        self.custom_sni_hostname = custom_sni;
-        self.tor_enabled = tor_enabled;
-        if tor_enabled && self.tor_manager.get_client().is_none() {
-            let config = TorClientConfig::default();
-            let tor_manager = self.tor_manager.clone();
-            tokio::spawn(async move {
-                let _ = tor_manager.start(config).await;
-            });
-        } else if !tor_enabled && self.tor_manager.get_client().is_some() {
-            let tor_manager = self.tor_manager.clone();
-            tokio::spawn(async move {
-                tor_manager.stop().await;
-            });
-        }
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeStartTor(
+    env: JNIEnv,
+    _class: JClass,
+    engine_ptr: jlong,
+) {
+    let engine = unsafe { &mut *(engine_ptr as *mut VpnEngine) };
+    let config = ArtiTorClientConfig::default();
+    let result = engine.start_tor(config).block_on();
+    if let Err(e) = result {
+        android_logger::log(LogLevel::Error, "NexusVpn", &format!("Failed to start Tor: {}", e));
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeStopTor(
+    env: JNIEnv,
+    _class: JClass,
+    engine_ptr: jlong,
+) {
+    let engine = unsafe { &mut *(engine_ptr as *mut VpnEngine) };
+    engine.stop_tor().block_on();
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeSetSniConfig(
+    env: JNIEnv,
+    _class: JClass,
+    engine_ptr: jlong,
+    sni_enabled: jboolean,
+    custom_sni: JString,
+    tor_enabled: jboolean,
+) {
+    let engine = unsafe { &mut *(engine_ptr as *mut VpnEngine) };
+    let custom_sni_str = env.get_string(custom_sni).unwrap().into();
+    engine.set_sni_config(sni_enabled != 0, custom_sni_str, tor_enabled != 0);
+}
+use futures::executor::block_on;
+
+use jni::sys::{jlong, jboolean};
+use jni::objects::{JClass, JString};
+use jni::JNIEnv;
+
+use log::error;
+
+
+
+
+#[no_mangle]
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeStartTor(
+    env: JNIEnv,
+    _class: JClass,
+    engine_ptr: jlong,
+) {
+    let engine = unsafe { &mut *(engine_ptr as *mut VpnEngine) };
+    let config = ArtiTorClientConfig::default();
+    let result = futures::executor::block_on(engine.start_tor(config));
+    if let Err(e) = result {
+        error!("Failed to start Tor: {}", e);
+    }
+}
+
+
+
+#[no_mangle]
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeStopTor(
+    env: JNIEnv,
+    _class: JClass,
+    engine_ptr: jlong,
+) {
+    let engine = unsafe { &mut *(engine_ptr as *mut VpnEngine) };
+    futures::executor::block_on(engine.stop_tor());
+}
+
+
+
+#[no_mangle]
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeSetSniConfig(
+    env: JNIEnv,
+    _class: JClass,
+    engine_ptr: jlong,
+    sni_enabled: jboolean,
+    custom_sni: JString,
+    tor_enabled: jboolean,
+) {
+    let engine = unsafe { &mut *(engine_ptr as *mut VpnEngine) };
+    let custom_sni_str = env.get_string(&custom_sni).unwrap().into();
+    engine.set_sni_config(sni_enabled != 0, custom_sni_str, tor_enabled != 0);
 }
