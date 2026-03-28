@@ -652,11 +652,12 @@ fun NexusVpnApp(
     }
 }
 
+
 @Composable
 fun StatCard(label: String, value: String) {
     Card(
         modifier = Modifier
-            Modifier.fillMaxWidth().height(48.dp)
+            .weight(1f)
             .clip(RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(containerColor = ProtonDarkBg),
         shape = RoundedCornerShape(12.dp)
@@ -679,6 +680,7 @@ fun StatCard(label: String, value: String) {
         }
     }
 }
+
 
 @Composable
 fun ToggleSettingCard(label: String, enabled: Boolean, onToggle: (Boolean) -> Unit) {
