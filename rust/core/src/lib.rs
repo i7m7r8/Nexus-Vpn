@@ -244,7 +244,7 @@ impl SniHandler {
 
     pub async fn build_client_hello(&self, hostname: &str, use_sni: bool) -> Result<Vec<u8>, String> {
         if !self.config.enabled {
-            return self.build_plaintext_hello(hostname);
+            return self.build_plaintext_hello(hostname).await;
         }
 
         let target_hostname = if let Some(custom) = &self.config.custom_hostname {
@@ -736,7 +736,7 @@ impl VpnEngine {
         Self {
             servers: Arc::new(RwLock::new(HashMap::new())),
             current_connection: Arc::new(Mutex::new(None)),
-            encryption: Arc::new(EncryptionEngine::new(cipher_suite)),
+            encryption: Arc::new(EncryptionEngine::new(cipher_suite.clone())),
             sni_config: Arc::new(RwLock::new(SniConfig {
                 enabled: true,
                 custom_hostname: None,
