@@ -1,0 +1,30 @@
+[package]
+name = "nexus-vpn-core"
+version = "1.0.0"
+edition = "2021"
+authors = ["Nexus VPN Team"]
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = "0.7"
+rustls = "0.21"
+chacha20poly1305 = "0.10"
+aes-gcm = "0.10"
+sha2 = "0.10"
+rand = "0.8"
+derivative = "2.2"
+futures = "0.3"
+jni = "0.21"
+android-logger = "0.13"
+log = "0.4"
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = "0.8"
+ndk-glue = "0.8"
+
+[dev-dependencies]
+tokio-test = "0.4"

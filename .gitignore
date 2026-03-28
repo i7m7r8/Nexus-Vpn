@@ -1,0 +1,27 @@
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Android
+.gradle/
+.idea/
+*.iml
+*.apk
+*.aar
+*.so
+build/
+.DS_Store
+
+# IDE
+*.swp
+*.swo
+*~
+.vscode/
+
+# OS
+Thumbs.db
+
+# Generated
+/android/app/src/main/jniLibs/
