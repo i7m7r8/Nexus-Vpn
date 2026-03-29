@@ -924,10 +924,9 @@ impl VpnEngine {
         if self.tor_enabled {
             // SNI→Tor chaining: route through Arti after SNI handshake
             if let Some(client) = self.tor_manager.get_client() {
-                let arti_stream = client.connect_tcp((addr, port))
-                    .await.map_err(|e| anyhow::anyhow!("Tor: {}", e))?;
-                // Wrap for our Stream enum (stub: Arti stream → TCP wrapper)
-                let tcp = tokio::net::TcpStream::connect("127.0.0.1:9050").await?;
+                // Route through Tor SOCKS5 proxy on 127.0.0.1:9050
+                let tcp = tokio::net::TcpStream::connect("127.0.0.1:9050").await
+                    .map_err(|e| anyhow::anyhow!("Tor SOCKS5: {}", e))?;
                 Ok(Stream::Tor(tcp))
             } else { Err(anyhow::anyhow!("Tor not initialized")) }
         } else {
@@ -1181,6 +1180,7 @@ impl SplitTunnelManager {
 // ============================================================================
 
 #[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PacketStats {
     pub tcp_packets: u64,
     pub udp_packets: u64,
@@ -1190,6 +1190,7 @@ pub struct PacketStats {
 }
 
 #[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DetailedConnectionStats {
     pub base_stats: VpnConnectionStats,
     pub packet_stats: PacketStats,
@@ -2077,7 +2078,7 @@ impl LogManager {
     async fn rotate(&self) -> Result<(), String> {
         let timestamp = chrono::Local::now().format(r"%Y%m%d_%H%M%S");
         let old_path = self.log_dir.join("nexus-vpn.log");
-        let new_path = self.log_dir.join(format!("nexus-vpn.{{}}.log", timestamp));
+        let new_path = self.log_dir.join(format!("nexus-vpn.{}.log", timestamp));
         tokio::fs::rename(&old_path, &new_path).await.map_err(|e| e.to_string())?;
         let new_file = tokio::fs::OpenOptions::new()
             .create(true)
