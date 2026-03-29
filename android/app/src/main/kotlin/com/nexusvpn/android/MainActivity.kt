@@ -715,10 +715,10 @@ fun StatsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        LargeStatCard("Download Speed", connectionSpeed, Icons.Default.Download, modifier = Modifier.weight(1f))
-        LargeStatCard("Latency", connectionLatency, Icons.Default.Speed, modifier = Modifier.weight(1f))
-        LargeStatCard("Data Used", dataUsed, Icons.Default.DataUsage, modifier = Modifier.weight(1f))
-        LargeStatCard("Connection Time", connectionTime, Icons.Default.Timer, modifier = Modifier.weight(1f))
+        LargeStatCard("Download Speed", connectionSpeed, Icons.Default.Download)
+        LargeStatCard("Latency", connectionLatency, Icons.Default.Speed)
+        LargeStatCard("Data Used", dataUsed, Icons.Default.DataUsage)
+        LargeStatCard("Connection Time", connectionTime, Icons.Default.Timer)
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -745,10 +745,9 @@ fun StatsScreen(
 // ============================================================================
 
 @Composable
-@Composable
-fun StatCard(label: String, value: String) {
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .padding(4.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
@@ -760,15 +759,15 @@ fun StatCard(label: String, value: String) {
         ) {
             Text(label, fontSize = 10.sp, color = Color.Gray)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ProtonLightPrimary)        }
+            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ProtonLightPrimary)
+        }
     }
 }
 
 @Composable
-@Composable
-fun LargeStatCard(label: String, value: String, icon: ImageVector) {
+fun LargeStatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector)) {
     Card(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
