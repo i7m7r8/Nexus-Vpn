@@ -678,7 +678,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let circuit = self.tor_client.build_circuit().await?;
+        let _circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -1668,10 +1668,10 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use tokio::sync::{Mutex, RwLock};
 use std::time::Duration;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::time::sleep;
 use chacha20poly1305::KeyInit;
-use aes_gcm::aead::KeyInit as AesKeyInit;
+// use aes_gcm::aead::KeyInit as AesKeyInit;
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_create_engine() -> *mut NexusVpnEngine {
@@ -1803,7 +1803,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let circuit = self.tor_client.build_circuit().await?;
+            let _circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
