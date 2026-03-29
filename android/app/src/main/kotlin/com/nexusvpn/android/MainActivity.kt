@@ -3,7 +3,6 @@
 // Feature-Complete Android App with SNI + Tor + Real-Time Stats
 // ============================================================================
 
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.nexusvpn.android
 
 import android.Manifest
@@ -44,7 +43,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.nexusvpn.android.service.NexusVpnService
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -745,9 +743,10 @@ fun StatsScreen(
 // ============================================================================
 
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+fun StatCard(label: String, value: String) {
     Card(
-        modifier = modifier
+        modifier = Modifier
+            .weight(1f)
             .padding(4.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
@@ -765,7 +764,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun LargeStatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector)) {
+fun LargeStatCard(label: String, value: String, icon: ImageVector) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -936,4 +935,4 @@ fun LogEntry(event: String, timestamp: String) {
         Text(event, fontSize = 12.sp, color = Color.White)
         Text(timestamp, fontSize = 10.sp, color = Color.Gray)
     }
-}// Force rebuild Sun Mar 29 20:13:23 +06 2026
+}
