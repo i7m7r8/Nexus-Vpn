@@ -35,3 +35,6 @@ ndk-glue = "0.7"
 
 [dev-dependencies]
 criterion = "0.5"
+
+# Add bundled sqlite3 for Android cross-compilation
+libsqlite3-sys = { version = "0.36", features = ["bundled"] }
