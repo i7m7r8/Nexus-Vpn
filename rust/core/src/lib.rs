@@ -2,8 +2,8 @@
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
 use arti_client::TorClient;
-use tor_rtcompat::PreferredRuntime;
-use tor_config::Config as TorConfig;
+// tor_rtcompat::PreferredRuntime removed (feature-gated, unused)
+// tor_config::Config alias removed (conflicts with local TorConfig struct)
 
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
@@ -13,6 +13,13 @@ use tor_config::Config as TorConfig;
 
 use tokio::task::JoinHandle;
 use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
+use std::time::Duration;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tokio::time::sleep;
+use chacha20poly1305::KeyInit;
+use std::ffi::{CStr, CString};
+use std::os::raw::c_char;
 use std::collections::{HashMap, VecDeque};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
@@ -28,6 +35,7 @@ use serde_json; // Added for JSON handling
 // Custom stream type to avoid trait object restrictions
 enum Stream {
     Tcp(tokio::net::TcpStream),
+    Tor(tokio::net::TcpStream),
 }
 
 impl tokio::io::AsyncRead for Stream {
@@ -145,8 +153,8 @@ pub struct TorClientConfig {
     pub auto_rotation: bool,
 }
 impl TorClientConfig {
-    pub fn to_arti(&self) -> tor_config::Config {
-        tor_config::Config::default()
+    pub fn to_arti(&self) -> String {
+        String::from("tor_config_stub")
     }
 }
 
@@ -213,7 +221,7 @@ impl EncryptionEngine {
     }
 
     pub async fn encrypt_chacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let mut rng = self.rng.lock().await;
+        let mut rng: tokio::sync::MutexGuard<rand::rngs::OsRng> = self.rng.lock().await;
         let nonce_bytes: [u8; 12] = rng.gen();
         let nonce = Nonce::from(nonce_bytes);
 
@@ -243,7 +251,7 @@ impl EncryptionEngine {
     }
 
     pub async fn encrypt_aes256(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let mut rng = self.rng.lock().await;
+        let mut rng: tokio::sync::MutexGuard<rand::rngs::OsRng> = self.rng.lock().await;
         let nonce_bytes: [u8; 12] = rng.gen();
         let nonce = aes_gcm::Nonce::from(nonce_bytes);
 
@@ -557,7 +565,7 @@ impl SimulatedTorClient {
 
     pub async fn rotate_circuit(&self) -> Result<String, String> {
         if !self.config.auto_rotation {
-            return Ok(self.current_circuit.lock().await.clone().unwrap_or_default());
+            return Ok(self.current_circuit.lock().await.clone().unwrap_or_default() as String);
         }
 
         self.build_circuit().await
@@ -728,14 +736,14 @@ impl VpnConnection {
         stats.bytes_sent += encrypted.len() as u64;
         stats.packets_sent += 1;
 
-        let mut buffer = self.packet_buffer.lock().await;
+        let mut buffer: tokio::sync::MutexGuard<std::collections::VecDeque<Vec<u8>>> = self.packet_buffer.lock().await;
         buffer.push_back(encrypted.clone());
 
         Ok(encrypted.len())
     }
 
     pub async fn receive_packet(&self) -> Result<Vec<u8>, String> {
-        let mut buffer = self.packet_buffer.lock().await;
+        let mut buffer: tokio::sync::MutexGuard<std::collections::VecDeque<Vec<u8>>> = self.packet_buffer.lock().await;
 
         if let Some(encrypted) = buffer.pop_front() {
             let decrypted = self.encryption.decrypt(&encrypted).await?;
@@ -751,7 +759,7 @@ impl VpnConnection {
     }
 
     pub async fn get_stats(&self) -> VpnConnectionStats {
-        self.stats.lock().await.clone()
+        self.stats.lock().await.clone() as VpnConnectionStats
     }
 
     pub async fn get_state(&self) -> ConnectionState {
@@ -771,7 +779,7 @@ impl VpnConnection {
             latency: self.stats.lock().await.latency_ms,
         };
 
-        let mut logs = self.connection_logs.lock().await;
+        let mut logs: tokio::sync::MutexGuard<std::collections::VecDeque<ConnectionLog>> = self.connection_logs.lock().await;
         logs.push_back(log);
         if logs.len() > 100 {
             logs.pop_front();
@@ -927,6 +935,8 @@ impl VpnEngine {
             Ok(Stream::Tcp(tcp))
         }
     }
+
+} // end impl VpnEngine
 
 // ============================================================================
 // ============= CONNECTION POOL MANAGER (Production Grade) =================
@@ -1685,14 +1695,6 @@ impl NexusVpnEngine {
 // ==================== FFI EXPORTS FOR JNI ================================
 // ============================================================================
 
-use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
-use tokio::sync::{Mutex, RwLock};
-use std::time::Duration;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use tokio::time::sleep;
-use chacha20poly1305::KeyInit;
-// use aes_gcm::aead::KeyInit as AesKeyInit;
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_create_engine() -> *mut NexusVpnEngine {
@@ -2127,5 +2129,4 @@ mod tests {
             assert_eq!(current, "a.com");
         });
     }
-}
 }
