@@ -765,7 +765,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, modifi
 }
 
 @Composable
-fun LargeStatCard(label: String, value: String, icon: ImageVector, modifier = Modifier.weight(1f)) {
+fun LargeStatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector)) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
