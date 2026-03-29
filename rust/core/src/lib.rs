@@ -728,6 +728,7 @@ impl VpnConnection {
 
 /// Manages the Arti Tor client lifecycle.
 #[derive(Clone)]
+#[derive(Clone)]
 pub struct TorManager {
     client: Option<Arc<TorClient>>,
 }
@@ -795,7 +796,6 @@ impl VpnEngine {
                 custom_user_agent: None,
                 fingerprint_resistant: true,
             /// Start the Tor client if it's not already running.
-    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
         if self.tor_manager.get_client().is_none() {
             self.tor_manager.start(config).await?;
         
@@ -805,7 +805,7 @@ impl VpnEngine {
         self.tor_enabled = tor_enabled;
         if tor_enabled && self.tor_manager.get_client().is_none() {
             let config = TorClientConfig::default();
-            let tor_manager = self.tor_manager.clone();
+            let mut tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 let _ = tor_manager.start(config).await;
             
@@ -821,14 +821,13 @@ impl VpnEngine {
 
 });
         } else if !tor_enabled && self.tor_manager.get_client().is_some() {
-            let tor_manager = self.tor_manager.clone();
+            let mut tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 tor_manager.stop().await;
             });
         }
     }
 
-    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
         self.tor_manager.start(config).await
     }
 
@@ -1245,12 +1244,12 @@ impl VpnEngine {
         self.tor_enabled = tor_enabled;
         if tor_enabled && self.tor_manager.get_client().is_none() {
             let config = TorClientConfig::default();
-            let tor_manager = self.tor_manager.clone();
+            let mut tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 let _ = tor_manager.start(config).await;
             });
         } else if !tor_enabled && self.tor_manager.get_client().is_some() {
-            let tor_manager = self.tor_manager.clone();
+            let mut tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 tor_manager.stop().await;
             });
