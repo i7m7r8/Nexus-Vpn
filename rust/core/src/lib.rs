@@ -33,12 +33,14 @@ pub enum VpnProtocol {
     TOR,
     SNI_TCP,
     SNI_UDP,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CipherSuite {
     ChaCha20Poly1305,
     AES256GCM,
     Both,
+}
 
 #[derive(Clone, Debug, Derivative)]
 #[derivative(Eq, PartialEq)]
@@ -55,6 +57,7 @@ pub struct VpnServer {
     pub last_checked: std::time::SystemTime,
     pub load: f32,
     pub is_available: bool,
+}
 
 #[derive(Clone, Debug)]
 pub struct SniConfig {
@@ -66,12 +69,14 @@ pub struct SniConfig {
     pub tls_version: TlsVersion,
     pub custom_user_agent: Option<String>,
     pub fingerprint_resistant: bool,
+}
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 pub enum TlsVersion {
     V1_2,
     V1_3,
     Auto,
+}
 
 #[derive(Clone, Debug)]
 pub struct TorConfig {
@@ -83,6 +88,7 @@ pub struct TorConfig {
     pub circuit_build_timeout_secs: u64,
     pub connection_timeout_secs: u64,
     pub auto_rotation: bool,
+}
 
 #[derive(Clone, Debug)]
 #[derive(Default)]
@@ -97,6 +103,7 @@ pub struct VpnConnectionStats {
     pub connection_duration_secs: u64,
     pub packet_loss_percent: f32,
     pub uptime_percent: f32,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct ConnectionLog {
@@ -106,6 +113,7 @@ pub struct ConnectionLog {
     pub protocol: String,
     pub status: String,
     pub latency: u32,
+}
 
 // ============================================================================
 // ======================== ENCRYPTION ENGINE ================================
@@ -116,6 +124,7 @@ pub struct EncryptionEngine {
     aes_key: AesKey<Aes256Gcm>,
     cipher_suite: CipherSuite,
     rng: Arc<Mutex<rand::rngs::OsRng>>,
+}
 
 impl EncryptionEngine {
     pub fn new(cipher_suite: CipherSuite) -> Self {
@@ -128,6 +137,8 @@ impl EncryptionEngine {
             aes_key,
             cipher_suite,
             rng: Arc::new(Mutex::new(rng)),
+            }
+    }
 
     pub async fn encrypt_chacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
         let mut rng = self.rng.lock().await;
@@ -143,10 +154,12 @@ impl EncryptionEngine {
         result.extend_from_slice(&nonce_bytes);
         result.extend_from_slice(&ciphertext);
         Ok(result)
+    }
 
     pub async fn decrypt_chacha20(&self, ciphertext: &[u8]) -> Result<Vec<u8>, String> {
         if ciphertext.len() < 12 {
             return Err("Invalid ciphertext length".to_string());
+        }
 
         let (nonce_bytes, ciphertext_data) = ciphertext.split_at(12);
         let nonce = Nonce::from_slice(nonce_bytes);
@@ -155,6 +168,7 @@ impl EncryptionEngine {
         cipher
             .decrypt(nonce, ciphertext_data)
             .map_err(|e| format!("ChaCha20 decryption failed: {}", e))
+    }
 
     pub async fn encrypt_aes256(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
         let mut rng = self.rng.lock().await;
@@ -170,6 +184,7 @@ impl EncryptionEngine {
         result.extend_from_slice(&nonce_bytes);
         result.extend_from_slice(&ciphertext);
         Ok(result)
+    }
 
     pub async fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
         match self.cipher_suite {
@@ -178,6 +193,9 @@ impl EncryptionEngine {
             CipherSuite::Both => {
                 // Use ChaCha20 as primary with AES fallback
                 self.encrypt_chacha20(plaintext).await
+            }
+        }
+    }
 
     pub async fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, String> {
         match self.cipher_suite {
@@ -185,18 +203,24 @@ impl EncryptionEngine {
             CipherSuite::AES256GCM => {
                 if ciphertext.len() < 12 {
                     return Err("Invalid ciphertext length".to_string());
+                }
                 let (nonce_bytes, ciphertext_data) = ciphertext.split_at(12);
                 let nonce = aes_gcm::Nonce::from_slice(nonce_bytes);
                 let cipher = Aes256Gcm::new(&self.aes_key);
                 cipher
                     .decrypt(nonce, ciphertext_data)
                     .map_err(|e| format!("AES-256 decryption failed: {}", e))
+            }
             CipherSuite::Both => self.decrypt_chacha20(ciphertext).await,
+        }
+    }
 
     pub async fn derive_session_key(&self, seed: &[u8]) -> Vec<u8> {
         let mut hasher = Sha256::new();
         hasher.update(seed);
         hasher.finalize().to_vec()
+    }
+}
 
 // ============================================================================
 // ======================== SNI HANDLER (TLS CLIENT HELLO) ====================
@@ -206,6 +230,7 @@ pub struct SniHandler {
     config: SniConfig,
     cipher_suites: Vec<String>,
     rotation_index: Arc<Mutex<usize>>,
+}
 
 impl SniHandler {
     pub fn new(config: SniConfig) -> Self {
@@ -219,10 +244,13 @@ impl SniHandler {
             config,
             cipher_suites,
             rotation_index: Arc::new(Mutex::new(0)),
+            }
+    }
 
     pub async fn build_client_hello(&self, hostname: &str, use_sni: bool) -> Result<Vec<u8>, String> {
         if !self.config.enabled {
             return self.build_plaintext_hello(hostname).await;
+        }
 
         let target_hostname = if let Some(custom) = &self.config.custom_hostname {
             custom.clone()
@@ -234,6 +262,7 @@ impl SniHandler {
 
         self.craft_tls_client_hello(&target_hostname, use_sni)
             .await
+    }
 
     async fn generate_randomized_hostname(&self, base: &str) -> String {
         let mut rng = StdRng::from_entropy();
@@ -245,6 +274,7 @@ impl SniHandler {
             .collect();
 
         format!("{}.{}", random_prefix, base)
+    }
 
     async fn craft_tls_client_hello(&self, hostname: &str, use_sni: bool) -> Result<Vec<u8>, String> {
         let mut client_hello = Vec::with_capacity(512);
@@ -263,10 +293,14 @@ impl SniHandler {
         match self.config.tls_version {
             TlsVersion::V1_3 => {
                 client_hello.extend_from_slice(&[0x03, 0x03]);
+            }
             TlsVersion::V1_2 => {
                 client_hello.extend_from_slice(&[0x03, 0x03]);
+            }
             TlsVersion::Auto => {
                 client_hello.extend_from_slice(&[0x03, 0x03]);
+            }
+        }
 
         // Random (32 bytes)
         let mut rng = StdRng::from_entropy();
@@ -288,6 +322,7 @@ impl SniHandler {
         // Extensions (SNI included)
         if use_sni && self.config.fingerprint_resistant {
             self.add_sni_extension(&mut client_hello, hostname)?;
+        }
 
         // Supported Versions Extension
         self.add_supported_versions_extension(&mut client_hello)?;
@@ -299,6 +334,7 @@ impl SniHandler {
         self.add_signature_algorithms_extension(&mut client_hello)?;
 
         Ok(client_hello)
+    }
 
     fn add_sni_extension(&self, hello: &mut Vec<u8>, hostname: &str) -> Result<(), String> {
         let mut sni_data = Vec::new();
@@ -319,6 +355,7 @@ impl SniHandler {
         hello.extend_from_slice(&extension);
 
         Ok(())
+    }
 
     fn add_supported_versions_extension(&self, hello: &mut Vec<u8>) -> Result<(), String> {
         let mut versions = vec![0x03, 0x04]; // TLS 1.3
@@ -330,6 +367,7 @@ impl SniHandler {
         hello.extend_from_slice(&versions);
 
         Ok(())
+    }
 
     fn add_key_share_extension(&self, hello: &mut Vec<u8>) -> Result<(), String> {
         let mut rng = StdRng::from_entropy();
@@ -343,6 +381,7 @@ impl SniHandler {
         hello.extend_from_slice(&key_exchange);
 
         Ok(())
+    }
 
     fn add_signature_algorithms_extension(&self, hello: &mut Vec<u8>) -> Result<(), String> {
         let algorithms = vec![
@@ -357,15 +396,19 @@ impl SniHandler {
         hello.extend_from_slice(&algorithms);
 
         Ok(())
+    }
 
     async fn build_plaintext_hello(&self, hostname: &str) -> Result<Vec<u8>, String> {
         let greeting = format!("HELLO {}\r\n", hostname);
         Ok(greeting.into_bytes())
+    }
 
     pub async fn rotate_sni(&self) -> String {
         let mut idx = self.rotation_index.lock().await;
         *idx = (*idx + 1) % self.cipher_suites.len();
         self.cipher_suites[*idx].clone()
+    }
+}
 
 // ============================================================================
 // ======================== TOR CLIENT INTEGRATION ===========================
@@ -376,6 +419,7 @@ pub struct SimulatedTorClient {
     bridges: Arc<Mutex<VecDeque<String>>>,
     current_circuit: Arc<Mutex<Option<String>>>,
     connection_count: Arc<Mutex<u64>>,
+}
 
 impl SimulatedTorClient {
     pub fn new(config: TorConfig) -> Self {
@@ -388,13 +432,17 @@ impl SimulatedTorClient {
             bridges,
             current_circuit: Arc::new(Mutex::new(None)),
             connection_count: Arc::new(Mutex::new(0)),
+            }
+    }
 
     pub async fn initialize(&self) -> Result<(), String> {
         if !self.config.enabled {
             return Ok(());
+        }
 
         self.build_circuit().await?;
         Ok(())
+    }
 
     pub async fn build_circuit(&self) -> Result<String, String> {
         let mut rng = StdRng::from_entropy();
@@ -426,28 +474,36 @@ impl SimulatedTorClient {
         *count += 1;
 
         Ok(circuit)
+    }
 
     async fn select_random_node(&self) -> String {
         let mut rng = StdRng::from_entropy();
         let nodes = vec!["GuardNode1", "GuardNode2", "GuardNode3"];
         let idx = rng.gen_range(0..nodes.len());
         nodes[idx].to_string()
+    }
 
     pub async fn rotate_circuit(&self) -> Result<String, String> {
         if !self.config.auto_rotation {
             return Ok(self.current_circuit.lock().await.clone().unwrap_or_default());
+        }
 
         self.build_circuit().await
+    }
 
     pub async fn add_bridge(&self, bridge: String) -> Result<(), String> {
         self.bridges.lock().await.push_back(bridge);
         Ok(())
+    }
 
     pub async fn get_current_circuit(&self) -> Option<String> {
         self.current_circuit.lock().await.clone()
+    }
 
     pub async fn get_connection_count(&self) -> u64 {
         *self.connection_count.lock().await
+    }
+}
 
 // ============================================================================
 // ======================== VPN CONNECTION MANAGER ============================
@@ -463,6 +519,7 @@ pub struct VpnConnection {
     tor_client: Arc<SimulatedTorClient>,
     packet_buffer: Arc<Mutex<VecDeque<Vec<u8>>>>,
     connection_logs: Arc<Mutex<VecDeque<ConnectionLog>>>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConnectionState {
@@ -472,6 +529,7 @@ pub enum ConnectionState {
     Reconnecting,
     Disconnecting,
     Error(String),
+}
 
 impl VpnConnection {
     pub fn new(
@@ -502,6 +560,8 @@ impl VpnConnection {
             tor_client,
             packet_buffer: Arc::new(Mutex::new(VecDeque::with_capacity(1024))),
             connection_logs: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
+        }
+    }
 
     pub async fn connect(&self) -> Result<(), String> {
         *self.state.lock().await = ConnectionState::Connecting;
@@ -512,16 +572,21 @@ impl VpnConnection {
         match self.protocol {
             VpnProtocol::SNI_TCP | VpnProtocol::SNI_UDP => {
                 self.connect_with_sni().await?;
+            }
             VpnProtocol::TOR => {
                 self.connect_with_tor().await?;
+            }
             _ => {
                 self.connect_standard().await?;
+            }
+        }
 
         *self.state.lock().await = ConnectionState::Connected;
         self.log_connection_event("Connection established", "CONNECTED".to_string())
             .await;
 
         Ok(())
+    }
 
     async fn connect_standard(&self) -> Result<(), String> {
         let start = std::time::Instant::now();
@@ -533,6 +598,7 @@ impl VpnConnection {
         self.stats.lock().await.latency_ms = latency;
 
         Ok(())
+    }
 
     async fn connect_with_sni(&self) -> Result<(), String> {
         let start = std::time::Instant::now();
@@ -552,6 +618,7 @@ impl VpnConnection {
             .await;
 
         Ok(())
+    }
 
     async fn connect_with_tor(&self) -> Result<(), String> {
         let start = std::time::Instant::now();
@@ -568,6 +635,7 @@ impl VpnConnection {
             .await;
 
         Ok(())
+    }
 
     pub async fn disconnect(&self) -> Result<(), String> {
         *self.state.lock().await = ConnectionState::Disconnecting;
@@ -579,6 +647,7 @@ impl VpnConnection {
             .await;
 
         Ok(())
+    }
 
     pub async fn send_packet(&self, data: &[u8]) -> Result<usize, String> {
         let encrypted = self.encryption.encrypt(data).await?;
@@ -591,6 +660,7 @@ impl VpnConnection {
         buffer.push_back(encrypted.clone());
 
         Ok(encrypted.len())
+    }
 
     pub async fn receive_packet(&self) -> Result<Vec<u8>, String> {
         let mut buffer = self.packet_buffer.lock().await;
@@ -605,12 +675,16 @@ impl VpnConnection {
             Ok(decrypted)
         } else {
             Err("No packets available".to_string())
+        }
+    }
 
     pub async fn get_stats(&self) -> VpnConnectionStats {
         self.stats.lock().await.clone()
+    }
 
     pub async fn get_state(&self) -> ConnectionState {
         self.state.lock().await.clone()
+    }
 
     async fn log_connection_event(&self, event: &str, status: String) {
         let log = ConnectionLog {
@@ -629,9 +703,12 @@ impl VpnConnection {
         logs.push_back(log);
         if logs.len() > 100 {
             logs.pop_front();
+        }
+    }
 
     pub async fn get_connection_logs(&self) -> Vec<ConnectionLog> {
         self.connection_logs.lock().await.iter().cloned().collect()
+    }
 
     pub async fn reconnect(&self) -> Result<(), String> {
         *self.state.lock().await = ConnectionState::Reconnecting;
@@ -643,6 +720,8 @@ impl VpnConnection {
         self.connect().await?;
 
         Ok(())
+    }
+}
 
 // ============================================================================
 // ======================== VPN ENGINE (MAIN CONTROLLER) =====================
@@ -652,24 +731,33 @@ impl VpnConnection {
 #[derive(Clone)] // Only one derive
 pub struct TorManager {
     client: Option<Arc<ArtiTorClient<TokioRustlsRuntime>>>,
+}
 
 impl TorManager {
 
     pub async fn start(&mut self, _config: TorClientConfig) -> Result<(), String> {
         // Placeholder: arti client not yet integrated
         Ok(())
+    }
 
 
     pub async fn stop(&mut self) {
         if let Some(client) = self.client.take() {
             drop(client);
+        }
+    }
 
     pub fn get_client(&self) -> Option<Arc<ArtiTorClient<TokioRustlsRuntime>>> {
         self.client.clone()
+    }
+}
 
 impl Default for TorManager {
     fn default() -> Self {
         Self { client: None,
+            }
+    }
+}
 
 
 pub struct VpnEngine {
@@ -727,6 +815,8 @@ impl VpnEngine {
             sni_enabled: false,
             custom_sni_hostname: String::new(),
             tor_enabled: false,
+        }
+    }
 
     pub fn set_sni_config(&mut self, sni_enabled: bool, custom_sni: String, tor_enabled: bool) {
         self.sni_enabled = sni_enabled;
@@ -743,12 +833,16 @@ impl VpnEngine {
             tokio::spawn(async move {
                 tor_manager.stop().await;
             });
+        }
+    }
 
     pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), String> {
         self.tor_manager.start(config).await
+    }
 
     pub async fn stop_tor(&mut self) {
         self.tor_manager.stop().await
+    }
 
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Box<dyn tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send>, anyhow::Error> {
         if let Some(tor_client) = self.tor_manager.get_client() {
@@ -757,9 +851,13 @@ impl VpnEngine {
         } else {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(Box::new(stream))
+        }
     } else {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(stream)
+        }
+    }
+}
 
 // ============================================================================
 // ============= CONNECTION POOL MANAGER (Production Grade) =================
@@ -773,12 +871,14 @@ pub struct PooledConnection {
     pub last_used: Arc<Mutex<std::time::Instant>>,
     pub is_active: Arc<Mutex<bool>>,
     pub bytes_through: Arc<Mutex<u64>>,
+}
 
 pub struct ConnectionPool {
     connections: Arc<RwLock<HashMap<String, PooledConnection>>>,
     max_connections: usize,
     idle_timeout_secs: u64,
     health_check_interval: Duration,
+}
 
 impl ConnectionPool {
     pub fn new(max_connections: usize, idle_timeout_secs: u64) -> Self {
@@ -787,6 +887,8 @@ impl ConnectionPool {
             max_connections,
             idle_timeout_secs,
             health_check_interval: Duration::from_secs(30),
+        }
+    }
 
     pub async fn get_or_create(&self, addr: SocketAddr) -> Result<PooledConnection, String> {
         let conn_id = format!("{}:{}", addr.ip(), addr.port());
@@ -797,6 +899,8 @@ impl ConnectionPool {
             if is_active {
                 *conn.last_used.lock().await = std::time::Instant::now();
                 return Ok(conn.clone());
+            }
+        }
 
         if conns.len() >= self.max_connections {
             let oldest = conns
@@ -806,6 +910,8 @@ impl ConnectionPool {
 
             if let Some(old_id) = oldest {
                 conns.remove(&old_id);
+            }
+        }
 
         let pooled = PooledConnection {
             id: conn_id.clone(),
@@ -818,11 +924,14 @@ impl ConnectionPool {
 
         conns.insert(conn_id, pooled.clone());
         Ok(pooled)
+    }
 
     pub async fn release(&self, conn_id: &str) {
         let conns = self.connections.read().await;
         if let Some(conn) = conns.get(conn_id) {
             *conn.is_active.lock().await = false;
+        }
+    }
 
     pub async fn cleanup_idle(&self) {
         let mut conns = self.connections.write().await;
@@ -833,11 +942,14 @@ impl ConnectionPool {
             let elapsed = now.duration_since(last_used);
             elapsed.as_secs() < self.idle_timeout_secs
         });
+    }
 
     pub async fn get_pool_stats(&self) -> (usize, usize) {
         let conns = self.connections.read().await;
         let active = conns.values().filter(|c| *c.is_active.blocking_lock()).count();
         (conns.len(), active)
+    }
+}
 
 // ============================================================================
 // =========== IPTABLES & LINUX FIREWALL INTEGRATION (Android) ==============
@@ -847,6 +959,7 @@ pub struct IptablesManager {
     rules_applied: Arc<Mutex<Vec<String>>>,
     vpn_mark: u32,
     kill_switch_enabled: Arc<Mutex<bool>>,
+}
 
 impl IptablesManager {
     pub fn new(vpn_mark: u32) -> Self {
@@ -854,6 +967,8 @@ impl IptablesManager {
             rules_applied: Arc::new(Mutex::new(Vec::new())),
             vpn_mark,
             kill_switch_enabled: Arc::new(Mutex::new(false)),
+        }
+    }
 
     pub async fn setup_kill_switch(&self) -> Result<(), String> {
         let rules = vec![
@@ -866,18 +981,22 @@ impl IptablesManager {
         let mut applied = self.rules_applied.lock().await;
         for rule in rules {
             applied.push(rule);
+        }
 
         *self.kill_switch_enabled.lock().await = true;
         Ok(())
+    }
 
     pub async fn disable_kill_switch(&self) -> Result<(), String> {
         let applied = self.rules_applied.lock().await;
         for rule in applied.iter() {
             let _restore = rule.replace(" -A ", " -D ");
             // In real implementation, execute restore command
+        }
 
         *self.kill_switch_enabled.lock().await = false;
         Ok(())
+    }
 
     pub async fn setup_ipv6_blocking(&self) -> Result<(), String> {
         let rules = vec![
@@ -890,8 +1009,10 @@ impl IptablesManager {
         let mut applied = self.rules_applied.lock().await;
         for rule in rules {
             applied.push(rule);
+        }
 
         Ok(())
+    }
 
     pub async fn setup_per_app_routing(&self, app_packages: Vec<String>, include: bool) -> Result<(), String> {
         for package in app_packages {
@@ -901,12 +1022,16 @@ impl IptablesManager {
                 format!("iptables -t mangle -A OUTPUT -m owner --uid-owner {} -j ACCEPT", package)
             };
             self.rules_applied.lock().await.push(rule);
+        }
         Ok(())
+    }
 
     pub async fn flush_all_rules(&self) -> Result<(), String> {
         self.rules_applied.lock().await.clear();
         *self.kill_switch_enabled.lock().await = false;
         Ok(())
+    }
+}
 
 // ============================================================================
 // ========== SPLIT TUNNELING ENGINE (Per-App VPN Routing) ==================
@@ -917,15 +1042,18 @@ pub struct SplitTunnelConfig {
     pub enabled: bool,
     pub mode: SplitTunnelMode,
     pub app_packages: Vec<String>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SplitTunnelMode {
     IncludeOnly,
     ExcludeOnly,
+}
 
 pub struct SplitTunnelManager {
     config: Arc<RwLock<SplitTunnelConfig>>,
     iptables: Arc<IptablesManager>,
+}
 
 impl SplitTunnelManager {
     pub fn new(iptables: Arc<IptablesManager>) -> Self {
@@ -936,6 +1064,8 @@ impl SplitTunnelManager {
                 app_packages: Vec::new(),
             })),
             iptables,
+        }
+    }
 
     pub async fn set_config(&self, config: SplitTunnelConfig) -> Result<(), String> {
         *self.config.write().await = config.clone();
@@ -943,22 +1073,29 @@ impl SplitTunnelManager {
         if config.enabled {
             let include = config.mode == SplitTunnelMode::IncludeOnly;
             self.iptables.setup_per_app_routing(config.app_packages, include).await?;
+        }
 
         Ok(())
+    }
 
     pub async fn add_package(&self, package: String) -> Result<(), String> {
         let mut cfg = self.config.write().await;
         if !cfg.app_packages.contains(&package) {
             cfg.app_packages.push(package);
+        }
         Ok(())
+    }
 
     pub async fn remove_package(&self, package: &str) -> Result<(), String> {
         let mut cfg = self.config.write().await;
         cfg.app_packages.retain(|p| p != package);
         Ok(())
+    }
 
     pub async fn get_config(&self) -> SplitTunnelConfig {
         (*self.config.read().await).clone()
+    }
+}
 
 // ============================================================================
 // ============= REAL-TIME STATISTICS & ANALYTICS ENGINE ====================
@@ -971,6 +1108,7 @@ pub struct PacketStats {
     pub icmp_packets: u64,
     pub other_packets: u64,
     pub average_packet_size: f64,
+}
 
 #[derive(Clone, Debug)]
 pub struct DetailedConnectionStats {
@@ -981,11 +1119,13 @@ pub struct DetailedConnectionStats {
     pub cpu_usage_percent: f32,
     pub memory_usage_mb: f32,
     pub estimated_bandwidth_mbps: f64,
+}
 
 pub struct StatsCollector {
     stats: Arc<RwLock<DetailedConnectionStats>>,
     history: Arc<RwLock<VecDeque<DetailedConnectionStats>>>,
     sample_interval: Duration,
+}
 
 impl StatsCollector {
     pub fn new() -> Self {
@@ -1001,6 +1141,8 @@ impl StatsCollector {
             })),
             history: Arc::new(RwLock::new(VecDeque::with_capacity(3600))),
             sample_interval: Duration::from_secs(1),
+        }
+    }
 
     pub async fn record_packet(&self, _size: usize, protocol: &str) {
         let mut stats = self.stats.write().await;
@@ -1011,6 +1153,7 @@ impl StatsCollector {
             "UDP" => stats.packet_stats.udp_packets += 1,
             "ICMP" => stats.packet_stats.icmp_packets += 1,
             _ => stats.packet_stats.other_packets += 1,
+        }
 
         let total = stats.packet_stats.tcp_packets
             + stats.packet_stats.udp_packets
@@ -1020,26 +1163,34 @@ impl StatsCollector {
         if total > 0 {
             stats.packet_stats.average_packet_size =
                 (stats.base_stats.bytes_sent as f64) / (total as f64);
+        }
+    }
 
     pub async fn record_latency(&self, latency_ms: u32) {
         let mut stats = self.stats.write().await;
         stats.latency_histogram.push(latency_ms);
         if stats.latency_histogram.len() > 1000 {
             stats.latency_histogram.remove(0);
+        }
+    }
 
     pub async fn calculate_average_latency(&self) -> f64 {
         let stats = self.stats.read().await;
         if stats.latency_histogram.is_empty() {
             return 0.0;
+        }
         let sum: u32 = stats.latency_histogram.iter().sum();
         (sum as f64) / (stats.latency_histogram.len() as f64)
+    }
 
     pub async fn get_stats(&self) -> DetailedConnectionStats {
         self.stats.read().await.clone()
+    }
 
     pub async fn get_history(&self, minutes: usize) -> Vec<DetailedConnectionStats> {
         let history = self.history.read().await;
         history.iter().rev().take(minutes * 60).cloned().collect()
+    }
 
     pub async fn push_to_history(&self) {
         let stats = self.stats.read().await.clone();
@@ -1047,6 +1198,9 @@ impl StatsCollector {
         history.push_back(stats);
         if history.len() > 3600 {
             history.pop_front();
+        }
+    }
+}
 
 // ============================================================================
 // ============== DNS PRIVACY ENGINE (DoH/DoT/Tor) ==========================
@@ -1058,6 +1212,7 @@ pub enum DnsMode {
     DoH,     // DNS over HTTPS
     DoT,     // DNS over TLS
     TorDns,  // Tor Exit Resolver
+}
 
 pub struct DnsPrivacyEngine {
     mode: Arc<RwLock<DnsMode>>,
@@ -1066,6 +1221,7 @@ pub struct DnsPrivacyEngine {
     blocked_domains: Arc<RwLock<Vec<String>>>,
     query_count: Arc<Mutex<u64>>,
     query_log: Arc<Mutex<VecDeque<String>>>,
+}
 
 impl DnsPrivacyEngine {
     pub fn new(mode: DnsMode) -> Self {
@@ -1081,11 +1237,14 @@ impl DnsPrivacyEngine {
             ])),
             query_count: Arc::new(Mutex::new(0)),
             query_log: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
+        }
+    }
 
     pub async fn resolve(&self, domain: &str) -> Result<IpAddr, String> {
         let cache = self.cache.read().await;
         if let Some(ip) = cache.get(domain) {
             return Ok(*ip);
+        }
         drop(cache);
 
         let mode = self.mode.read().await;
@@ -1106,34 +1265,45 @@ impl DnsPrivacyEngine {
         log.push_back(format!("[{}] {}", chrono::Local::now().format("%H:%M:%S"), domain));
         if log.len() > 1000 {
             log.pop_front();
+        }
 
         Ok(ip)
+    }
 
     async fn resolve_system(&self, _domain: &str) -> Result<IpAddr, String> {
         Err("System DNS not available in VPN context".to_string())
+    }
 
     async fn resolve_doh(&self, _domain: &str) -> Result<IpAddr, String> {
         // Cloudflare DoH endpoint: https://1.1.1.1/dns-query
         Ok(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)))
+    }
 
     async fn resolve_dot(&self, _domain: &str) -> Result<IpAddr, String> {
         // Quad9 DoT endpoint: 9.9.9.9:853
         Ok(IpAddr::V4(Ipv4Addr::new(9, 9, 9, 9)))
+    }
 
     async fn resolve_tor_dns(&self, _domain: &str) -> Result<IpAddr, String> {
         Err("Tor DNS requires Tor client initialization".to_string())
+    }
 
     pub async fn add_blocked_domain(&self, domain: String) {
         self.blocked_domains.write().await.push(domain);
+    }
 
     pub async fn get_blocked_domains(&self) -> Vec<String> {
         self.blocked_domains.read().await.clone()
+    }
 
     pub async fn clear_cache(&self) {
         self.cache.write().await.clear();
+    }
 
     pub async fn get_query_log(&self) -> Vec<String> {
         self.query_log.lock().await.iter().cloned().collect()
+    }
+}
 
 // ============================================================================
 // ============ ADVANCED SECURITY & LEAK PREVENTION ========================
@@ -1147,10 +1317,12 @@ pub struct LeakPreventionConfig {
     pub dnsxl_leak_prevention: bool,
     pub port_randomization: bool,
     pub time_sync_disabled: bool,
+}
 
 pub struct LeakPreventionEngine {
     config: Arc<RwLock<LeakPreventionConfig>>,
     detected_leaks: Arc<Mutex<Vec<String>>>,
+}
 
 impl LeakPreventionEngine {
     pub fn new() -> Self {
@@ -1164,27 +1336,35 @@ impl LeakPreventionEngine {
                 time_sync_disabled: false,
             })),
             detected_leaks: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
 
     pub async fn test_ipv6_leak(&self) -> Result<bool, String> {
         let config = self.config.read().await;
         if config.ipv6_leak_prevention {
             // Would check if IPv6 traffic is blocked
             return Ok(false);
+        }
         Ok(true)
+    }
 
     pub async fn test_webrtc_leak(&self) -> Result<bool, String> {
         let config = self.config.read().await;
         if config.webrtc_leak_prevention {
             // Would test WebRTC STUN binding
             return Ok(false);
+        }
         Ok(true)
+    }
 
     pub async fn test_dns_leak(&self) -> Result<bool, String> {
         let config = self.config.read().await;
         if config.dns_leak_prevention {
             // Would resolve test domain through VPN only
             return Ok(false);
+        }
         Ok(true)
+    }
 
     pub async fn run_full_leak_test(&self) -> Result<LeakTestResult, String> {
         let ipv6 = self.test_ipv6_leak().await?;
@@ -1197,15 +1377,20 @@ impl LeakPreventionEngine {
             dns_leaked: dns,
             timestamp: std::time::SystemTime::now(),
         })
+    }
 
     pub async fn record_leak(&self, leak_type: String) {
         self.detected_leaks.lock().await.push(leak_type);
+    }
 
     pub async fn get_detected_leaks(&self) -> Vec<String> {
         self.detected_leaks.lock().await.clone()
+    }
 
     pub async fn clear_leak_history(&self) {
         self.detected_leaks.lock().await.clear();
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct LeakTestResult {
@@ -1213,6 +1398,7 @@ pub struct LeakTestResult {
     pub webrtc_leaked: bool,
     pub dns_leaked: bool,
     pub timestamp: std::time::SystemTime,
+}
 
 // ============================================================================
 // =========== ADAPTIVE RETRY & FAILOVER MECHANISM ==========================
@@ -1223,6 +1409,7 @@ pub struct AdaptiveFailoverManager {
     fallback_servers: Arc<RwLock<Vec<VpnServer>>>,
     max_retries: u32,
     exponential_backoff: bool,
+}
 
 impl AdaptiveFailoverManager {
     pub fn new(max_retries: u32) -> Self {
@@ -1231,22 +1418,28 @@ impl AdaptiveFailoverManager {
             fallback_servers: Arc::new(RwLock::new(Vec::new())),
             max_retries,
             exponential_backoff: true,
+        }
+    }
 
     pub async fn mark_server_failed(&self, server_id: &str) {
         let mut failed = self.failed_servers.write().await;
         let count = failed.get(server_id).copied().unwrap_or(0);
         failed.insert(server_id.to_string(), count + 1);
+    }
 
     pub async fn mark_server_healthy(&self, server_id: &str) {
         let mut failed = self.failed_servers.write().await;
         failed.remove(server_id);
+    }
 
     pub async fn get_fallback_server(&self) -> Option<VpnServer> {
         let fallbacks = self.fallback_servers.read().await;
         fallbacks.first().cloned()
+    }
 
     pub async fn add_fallback(&self, server: VpnServer) {
         self.fallback_servers.write().await.push(server);
+    }
 
     pub async fn get_retry_delay(&self, server_id: &str) -> Duration {
         let failed = self.failed_servers.read().await;
@@ -1257,16 +1450,22 @@ impl AdaptiveFailoverManager {
             Duration::from_secs(delay_secs)
         } else {
             Duration::from_secs(5)
+        }
+    }
 
     pub async fn get_failed_server_count(&self, server_id: &str) -> u32 {
         self.failed_servers.read().await.get(server_id).copied().unwrap_or(0)
+    }
 
     pub async fn is_server_blocked(&self, server_id: &str) -> bool {
         let count = self.get_failed_server_count(server_id).await;
         count >= self.max_retries
+    }
 
     pub async fn reset_all_failures(&self) {
         self.failed_servers.write().await.clear();
+    }
+}
 
 // ============================================================================
 // ========== BATTERY & POWER OPTIMIZATION ENGINE ==========================
@@ -1277,11 +1476,13 @@ pub enum BatteryProfile {
     Performance,
     Balanced,
     PowerSaver,
+}
 
 pub struct BatteryOptimizer {
     profile: Arc<RwLock<BatteryProfile>>,
     cpu_sample_interval: Arc<Mutex<Duration>>,
     aggressive_reconnect: Arc<Mutex<bool>>,
+}
 
 impl BatteryOptimizer {
     pub fn new() -> Self {
@@ -1289,6 +1490,8 @@ impl BatteryOptimizer {
             profile: Arc::new(RwLock::new(BatteryProfile::Balanced)),
             cpu_sample_interval: Arc::new(Mutex::new(Duration::from_secs(5))),
             aggressive_reconnect: Arc::new(Mutex::new(false)),
+        }
+    }
 
     pub async fn set_profile(&self, profile: BatteryProfile) {
         *self.profile.write().await = profile.clone();
@@ -1297,21 +1500,30 @@ impl BatteryOptimizer {
             BatteryProfile::Performance => {
                 *self.cpu_sample_interval.lock().await = Duration::from_secs(1);
                 *self.aggressive_reconnect.lock().await = true;
+            }
             BatteryProfile::Balanced => {
                 *self.cpu_sample_interval.lock().await = Duration::from_secs(5);
                 *self.aggressive_reconnect.lock().await = false;
+            }
             BatteryProfile::PowerSaver => {
                 *self.cpu_sample_interval.lock().await = Duration::from_secs(30);
                 *self.aggressive_reconnect.lock().await = false;
+            }
+        }
+    }
 
     pub async fn get_profile(&self) -> BatteryProfile {
         self.profile.read().await.clone()
+    }
 
     pub async fn get_packet_batch_size(&self) -> usize {
         match *self.profile.read().await {
             BatteryProfile::Performance => 256,
             BatteryProfile::Balanced => 64,
             BatteryProfile::PowerSaver => 16,
+        }
+    }
+}
 
 // ============================================================================
 // ============ UNIFIED VPN ENGINE V2 (Full Feature) ========================
@@ -1328,6 +1540,7 @@ pub struct NexusVpnEngine {
     pub failover_manager: Arc<AdaptiveFailoverManager>,
     pub battery_optimizer: Arc<BatteryOptimizer>,
     pub config_version: Arc<Mutex<u32>>,
+}
 
 impl NexusVpnEngine {
     pub fn new(cipher_suite: CipherSuite) -> Self {
@@ -1344,12 +1557,15 @@ impl NexusVpnEngine {
             failover_manager: Arc::new(AdaptiveFailoverManager::new(3)),
             battery_optimizer: Arc::new(BatteryOptimizer::new()),
             config_version: Arc::new(Mutex::new(1)),
+        }
+    }
 
     pub async fn setup_complete_vpn_stack(&self) -> Result<(), String> {
         self.iptables.setup_kill_switch().await?;
         self.iptables.setup_ipv6_blocking().await?;
         self.stats_collector.push_to_history().await;
         Ok(())
+    }
 
     pub async fn connect_with_features(&self, server: VpnServer, sni_hostname: Option<String>) -> Result<(), String> {
         // 1. Record attempt
@@ -1365,13 +1581,16 @@ impl NexusVpnEngine {
         if let Some(hostname) = sni_hostname {
             let mut sni_cfg = self.base_engine.sni_config.write().await;
             sni_cfg.custom_hostname = Some(hostname);
+        }
 
         // 4. Test for leaks before connecting
         let leak_test = self.leak_prevention.run_full_leak_test().await?;
         if leak_test.ipv6_leaked || leak_test.webrtc_leaked || leak_test.dns_leaked {
             return Err("Leak detection failed - cannot proceed".to_string());
+        }
 
         Ok(())
+    }
 
     pub async fn get_comprehensive_stats(&self) -> Result<String, String> {
         let stats = self.stats_collector.get_stats().await;
@@ -1382,11 +1601,14 @@ impl NexusVpnEngine {
             "{{\"stats\": {:?}, \"leaks\": {{\"ipv6\": {}, \"webrtc\": {}, \"dns\": {}}}, \"pool\": {{\"total\": {}, \"active\": {}}}}}",
             stats, leak_test.ipv6_leaked, leak_test.webrtc_leaked, leak_test.dns_leaked, pool_total, pool_active
         ))
+    }
 
     pub async fn shutdown_complete(&self) -> Result<(), String> {
         self.iptables.flush_all_rules().await?;
         self.connection_pool.cleanup_idle().await;
         Ok(())
+    }
+}
 
 // ============================================================================
 // ==================== FFI EXPORTS FOR JNI ================================
@@ -1399,12 +1621,16 @@ use std::os::raw::c_char;
 pub extern "C" fn nexus_vpn_create_engine() -> *mut NexusVpnEngine {
     let engine = Box::new(NexusVpnEngine::new(CipherSuite::ChaCha20Poly1305));
     Box::into_raw(engine)
+}
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_destroy_engine(ptr: *mut NexusVpnEngine) {
     if !ptr.is_null() {
         unsafe {
             let _ = Box::from_raw(ptr);
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_set_sni_config(
@@ -1415,6 +1641,7 @@ pub extern "C" fn nexus_vpn_set_sni_config(
 ) -> i32 {
     if engine.is_null() {
         return -1;
+    }
 
     unsafe {
         let hostname = if !sni_hostname.is_null() {
@@ -1427,11 +1654,14 @@ pub extern "C" fn nexus_vpn_set_sni_config(
 
         (*engine).base_engine.set_sni_config(true, hostname, tor_enabled);
         0
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c_char {
     if engine.is_null() {
         return std::ptr::null();
+    }
 
     unsafe {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1440,28 +1670,39 @@ pub extern "C" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c
             Box::leak(Box::new(cstring)).as_ptr()
         } else {
             std::ptr::null()
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_kill_switch_enable(engine: *mut NexusVpnEngine) -> i32 {
     if engine.is_null() {
         return -1;
+    }
 
     unsafe {
         let rt = tokio::runtime::Runtime::new().unwrap();
         match rt.block_on((*engine).iptables.setup_kill_switch()) {
             Ok(_) => 0,
             Err(_) => -1,
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_kill_switch_disable(engine: *mut NexusVpnEngine) -> i32 {
     if engine.is_null() {
         return -1;
+    }
 
     unsafe {
         let rt = tokio::runtime::Runtime::new().unwrap();
         match rt.block_on((*engine).iptables.disable_kill_switch()) {
             Ok(_) => 0,
             Err(_) => -1,
+        }
+    }
+}
 
 // ============================================================================
 // ========== ADDITIONAL MODULES FOR 5000+ LINES ============================
@@ -1475,6 +1716,7 @@ pub mod sni_tor_chain {
         sni_handler: Arc<SniHandler>,
         tor_client: Arc<SimulatedTorClient>,
         chain_state: Arc<Mutex<ChainState>>,
+    }
 
     #[derive(Debug, Clone, PartialEq)]
     pub enum ChainState {
@@ -1483,6 +1725,7 @@ pub mod sni_tor_chain {
         BuildingTor,
         Connected,
         Error(String),
+    }
 
     impl SniTorChainer {
         pub fn new(sni_handler: Arc<SniHandler>, tor_client: Arc<SimulatedTorClient>) -> Self {
@@ -1490,6 +1733,8 @@ pub mod sni_tor_chain {
                 sni_handler,
                 tor_client,
                 chain_state: Arc::new(Mutex::new(ChainState::Idle)),
+            }
+        }
 
         pub async fn connect(&self, target_host: &str, _target_port: u16) -> Result<(), String> {
             *self.chain_state.lock().await = ChainState::BuildingSni;
@@ -1507,19 +1752,25 @@ pub mod sni_tor_chain {
 
             *self.chain_state.lock().await = ChainState::Connected;
             Ok(())
+        }
 
         pub async fn disconnect(&self) -> Result<(), String> {
             *self.chain_state.lock().await = ChainState::Idle;
             Ok(())
+        }
 
         pub async fn state(&self) -> ChainState {
             self.chain_state.lock().await.clone()
+        }
+    }
+}
 
 // Enhanced SniRotationManager
 pub struct SniRotationManager {
     hostnames: Arc<Mutex<VecDeque<String>>>,
     rotation_interval: Duration,
     current: Arc<Mutex<String>>,
+}
 
 impl SniRotationManager {
     pub fn new(hostnames: Vec<String>, interval_secs: u64) -> Self {
@@ -1527,6 +1778,8 @@ impl SniRotationManager {
             hostnames: Arc::new(Mutex::new(hostnames.into_iter().collect())),
             rotation_interval: Duration::from_secs(interval_secs),
             current: Arc::new(Mutex::new(String::new())),
+        }
+    }
 
     pub async fn start_rotation(&self) -> tokio::task::JoinHandle<()> {
         let self_clone = self.clone();
@@ -1535,16 +1788,22 @@ impl SniRotationManager {
             loop {
                 interval.tick().await;
                 self_clone.rotate().await;
+            }
         })
+    }
 
     async fn rotate(&self) {
         let mut hostnames = self.hostnames.lock().await;
         if let Some(next) = hostnames.pop_front() {
             hostnames.push_back(next.clone());
             *self.current.lock().await = next;
+        }
+    }
 
     pub async fn current(&self) -> String {
         self.current.lock().await.clone()
+    }
+}
 
 impl Clone for SniRotationManager {
     fn clone(&self) -> Self {
@@ -1552,17 +1811,23 @@ impl Clone for SniRotationManager {
             hostnames: self.hostnames.clone(),
             rotation_interval: self.rotation_interval,
             current: self.current.clone(),
+        }
+    }
+}
 
 // TorCircuitManager for dynamic circuit control
 pub struct TorCircuitManager {
     tor_client: Arc<SimulatedTorClient>,
     rotation_interval: Duration,
+}
 
 impl TorCircuitManager {
     pub fn new(tor_client: Arc<SimulatedTorClient>, rotation_secs: u64) -> Self {
         Self {
             tor_client,
             rotation_interval: Duration::from_secs(rotation_secs),
+        }
+    }
 
     pub async fn start_circuit_rotation(&self) -> tokio::task::JoinHandle<()> {
         let self_clone = self.clone();
@@ -1571,32 +1836,43 @@ impl TorCircuitManager {
             loop {
                 interval.tick().await;
                 let _ = self_clone.tor_client.rotate_circuit().await;
+            }
         })
+    }
+}
 
 impl Clone for TorCircuitManager {
     fn clone(&self) -> Self {
         Self {
             tor_client: self.tor_client.clone(),
             rotation_interval: self.rotation_interval,
+        }
+    }
+}
 
 // BandwidthController for traffic shaping
 pub struct BandwidthController {
     limit_mbps: Arc<Mutex<u64>>,
     token_bucket: Arc<Mutex<f64>>,
+}
 
 impl BandwidthController {
     pub fn new(limit_mbps: u64) -> Self {
         Self {
             limit_mbps: Arc::new(Mutex::new(limit_mbps)),
             token_bucket: Arc::new(Mutex::new(0.0)),
+        }
+    }
 
     pub async fn set_limit(&self, mbps: u64) {
         *self.limit_mbps.lock().await = mbps;
+    }
 
     pub async fn allow_packet(&self, packet_size_bytes: usize) -> bool {
         let limit_mbps = *self.limit_mbps.lock().await;
         if limit_mbps == 0 {
             return true;
+        }
         let mut tokens = self.token_bucket.lock().await;
         let _now = tokio::time::Instant::now();
         // Simplified: add tokens based on elapsed time
@@ -1606,6 +1882,9 @@ impl BandwidthController {
             true
         } else {
             false
+        }
+    }
+}
 
 // ConfigManager for encrypted persistence
 #[derive(Clone, Serialize, Deserialize)]
@@ -1617,11 +1896,13 @@ pub struct AppConfig {
     pub dns_mode: String,
     pub protocol: String,
     pub last_server: Option<String>,
+}
 
 pub struct ConfigManager {
     config_path: std::path::PathBuf,
     encryption: Arc<EncryptionEngine>,
     config: Arc<RwLock<AppConfig>>,
+}
 
 impl ConfigManager {
     pub fn new(path: std::path::PathBuf, encryption: Arc<EncryptionEngine>) -> Self {
@@ -1637,15 +1918,19 @@ impl ConfigManager {
                 protocol: "UDP".to_string(),
                 last_server: None,
             })),
+        }
+    }
 
     pub async fn load(&self) -> Result<(), String> {
         if !self.config_path.exists() {
             return Ok(());
+        }
         let encrypted = tokio::fs::read(&self.config_path).await.map_err(|e| e.to_string())?;
         let json_bytes = self.encryption.decrypt(&encrypted).await?;
         let cfg: AppConfig = serde_json::from_slice(&json_bytes).map_err(|e| e.to_string())?;
         *self.config.write().await = cfg;
         Ok(())
+    }
 
     pub async fn save(&self) -> Result<(), String> {
         let cfg = self.config.read().await;
@@ -1653,6 +1938,7 @@ impl ConfigManager {
         let encrypted = self.encryption.encrypt(&json).await?;
         tokio::fs::write(&self.config_path, encrypted).await.map_err(|e| e.to_string())?;
         Ok(())
+    }
 
     pub async fn update<F>(&self, f: F) -> Result<(), String>
     where
@@ -1662,15 +1948,19 @@ impl ConfigManager {
         f(&mut cfg);
         drop(cfg);
         self.save().await
+    }
 
     pub async fn get_config(&self) -> AppConfig {
         (*self.config.read().await).clone()
+    }
+}
 
 // LogManager with file rotation
 pub struct LogManager {
     log_dir: std::path::PathBuf,
     max_size: u64,
     current_log: Arc<Mutex<tokio::fs::File>>,
+}
 
 impl LogManager {
     pub async fn new(log_dir: std::path::PathBuf, max_size_bytes: u64) -> Result<Self, String> {
@@ -1687,6 +1977,7 @@ impl LogManager {
             max_size: max_size_bytes,
             current_log: Arc::new(Mutex::new(file)),
         })
+    }
 
     pub async fn log(&self, level: &str, msg: &str) -> Result<(), String> {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
@@ -1699,7 +1990,9 @@ impl LogManager {
         let metadata = file.metadata().await.map_err(|e| e.to_string())?;
         if metadata.len() > self.max_size {
             self.rotate().await?;
+        }
         Ok(())
+    }
 
     async fn rotate(&self) -> Result<(), String> {
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
@@ -1714,6 +2007,8 @@ impl LogManager {
             .map_err(|e| e.to_string())?;
         *self.current_log.lock().await = new_file;
         Ok(())
+    }
+}
 
 // Additional unit tests
 #[cfg(test)]
@@ -1727,6 +2022,7 @@ mod tests {
         let cipher = engine.encrypt(plain).await.unwrap();
         let decrypted = engine.decrypt(&cipher).await.unwrap();
         assert_eq!(plain, &decrypted[..]);
+    }
 
     #[tokio::test]
     async fn test_connection_pool() {
@@ -1738,6 +2034,7 @@ mod tests {
         let (total, active) = pool.get_pool_stats().await;
         assert_eq!(total, 1);
         assert_eq!(active, 1);
+    }
 
     #[test]
     fn test_sni_rotation() {
@@ -1751,3 +2048,5 @@ mod tests {
             let current = rotator.current().await;
             assert_eq!(current, "a.com");
         });
+    }
+}
