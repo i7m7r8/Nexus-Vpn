@@ -2,7 +2,6 @@
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
 use arti_client::TorClient;
-use arti_client::config::Config as TorConfig;
 
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
@@ -152,8 +151,9 @@ pub struct TorClientConfig {
     pub auto_rotation: bool,
 }
 impl TorClientConfig {
-    pub fn to_arti(&self) -> arti_client::config::Config {
-        arti_client::config::Config::default()    }
+    pub fn to_arti(&self) -> arti_client::config::ConfigParts {
+        arti_client::config::ConfigParts::default()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -928,7 +928,7 @@ impl VpnEngine {
             if let Some(client_arc) = self.tor_manager.get_client() {
                 let client = client_arc.lock().await;
                 // Arti handles the Tor circuit internally                let arti_stream = client
-                    .connect_tcp((addr, port))
+                    .connect_tcp(addr, port)
                     .await
                     .map_err(|e| anyhow::anyhow!("Arti connect_tcp: {}", e))?;
                 drop(client);
