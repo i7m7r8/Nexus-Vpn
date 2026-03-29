@@ -1,7 +1,7 @@
 
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
-use arti_client::TorClient;
+// use arti_client::TorClient; // removed: unused
 // tor_rtcompat::PreferredRuntime removed (feature-gated, unused)
 // tor_config::Config alias removed (conflicts with local TorConfig struct)
 
@@ -923,7 +923,7 @@ impl VpnEngine {
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Stream, anyhow::Error> {
         if self.tor_enabled {
             // SNI→Tor chaining: route through Arti after SNI handshake
-            if let Some(client) = self.tor_manager.get_client() {
+            if let Some(_client) = self.tor_manager.get_client() {
                 // Route through Tor SOCKS5 proxy on 127.0.0.1:9050
                 let tcp = tokio::net::TcpStream::connect("127.0.0.1:9050").await
                     .map_err(|e| anyhow::anyhow!("Tor SOCKS5: {}", e))?;
@@ -1179,8 +1179,7 @@ impl SplitTunnelManager {
 // ============= REAL-TIME STATISTICS & ANALYTICS ENGINE ====================
 // ============================================================================
 
-#[derive(Clone, Debug, Default)]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct PacketStats {
     pub tcp_packets: u64,
     pub udp_packets: u64,
@@ -1189,7 +1188,6 @@ pub struct PacketStats {
     pub average_packet_size: f64,
 }
 
-#[derive(Clone, Debug)]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DetailedConnectionStats {
     pub base_stats: VpnConnectionStats,
@@ -1827,7 +1825,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let circuit = self.tor_client.build_circuit().await?;
+            let _circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
