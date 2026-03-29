@@ -1,5 +1,4 @@
 use tokio::io::AsyncWriteExt;
-use aes_gcm::aead::Aead;
 use chacha20poly1305::aead::Aead;
 use arti_client::TorClientConfig;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
@@ -23,6 +22,59 @@ use derivative::Derivative;
 use chrono; // Added for timestamp formatting
 use serde::{Serialize, Deserialize}; // Added for config serialization
 use serde_json; // Added for JSON handling
+
+// Custom stream type to avoid trait object restrictions
+enum Stream {
+    Tcp(tokio::net::TcpStream),
+    Tor(arti_client::DataStream),
+}
+
+impl tokio::io::AsyncRead for Stream {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match &mut *self {
+            Stream::Tcp(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+            Stream::Tor(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for Stream {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        match &mut *self {
+            Stream::Tcp(s) => std::pin::Pin::new(s).poll_write(cx, buf),
+            Stream::Tor(s) => std::pin::Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match &mut *self {
+            Stream::Tcp(s) => std::pin::Pin::new(s).poll_flush(cx),
+            Stream::Tor(s) => std::pin::Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        match &mut *self {
+            Stream::Tcp(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+            Stream::Tor(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
 
 // ============================================================================
 // ======================== CORE DATA STRUCTURES ============================
