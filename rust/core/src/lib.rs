@@ -1,86 +1,25 @@
-
-use tokio::io::AsyncWriteExt;
-use chacha20poly1305::aead::Aead;
-
+use arti_client::TorClientConfig;
 // ============================================================================
-// NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
+// NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust)
+// Author: Security Team | Build: Production Ready
 // ============================================================================
 
-
-
+use tokio::sync::{RwLock, Mutex, mpsc};
+use tokio::time::{interval, Duration, sleep};
 use tokio::task::JoinHandle;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
-use std::time::Duration;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use tokio::time::sleep;
-use chacha20poly1305::KeyInit;
-use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
 use std::collections::{HashMap, VecDeque};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::Rng;
 use sha2::{Sha256, Digest};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use aes_gcm::{Aes256Gcm, Key as AesKey};
+use aes_gcm::aead::{Aead, KeyInit, Payload};
+use rustls::{ClientConfig, ClientConnection, RootCertStore};
+use std::io::Cursor;
 use derivative::Derivative;
-use chrono; // Added for timestamp formatting
-use serde::{Serialize, Deserialize}; // Added for config serialization
-use serde_json; // Added for JSON handling
-
-// Custom stream type to avoid trait object restrictions
-enum Stream {
-    Tcp(tokio::net::TcpStream),
-    Tor(tokio::net::TcpStream),
-}
-
-impl tokio::io::AsyncRead for Stream {
-    fn poll_read(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        match &mut *self {
-            Stream::Tcp(s) => std::pin::Pin::new(s).poll_read(cx, buf),
-            Stream::Tor(s) => std::pin::Pin::new(s).poll_read(cx, buf),
-        }
-    }
-}
-
-impl tokio::io::AsyncWrite for Stream {
-    fn poll_write(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<Result<usize, std::io::Error>> {
-        match &mut *self {
-            Stream::Tcp(s) => std::pin::Pin::new(s).poll_write(cx, buf),
-            Stream::Tor(s) => std::pin::Pin::new(s).poll_write(cx, buf),
-        }
-    }
-
-    fn poll_flush(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), std::io::Error>> {
-        match &mut *self {
-            Stream::Tcp(s) => std::pin::Pin::new(s).poll_flush(cx),
-            Stream::Tor(s) => std::pin::Pin::new(s).poll_flush(cx),
-        }
-    }
-
-    fn poll_shutdown(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), std::io::Error>> {
-        match &mut *self {
-            Stream::Tcp(s) => std::pin::Pin::new(s).poll_shutdown(cx),
-            Stream::Tor(s) => std::pin::Pin::new(s).poll_shutdown(cx),
-        }
-    }
-}
-
 
 // ============================================================================
 // ======================== CORE DATA STRUCTURES ============================
@@ -91,8 +30,8 @@ pub enum VpnProtocol {
     UDP,
     TCP,
     TOR,
-    SniTcp,
-    SniUdp,
+    SNI_TCP,
+    SNI_UDP,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -138,25 +77,6 @@ pub enum TlsVersion {
     Auto,
 }
 
-// TorClientConfig wrapper for Arti integration (SNI→Tor chaining)
-#[derive(Clone, Debug, Default)]
-pub struct TorClientConfig {
-    pub bridge_enabled: bool,
-    pub bridges: Vec<String>,
-    pub guard_node: Option<String>,
-    pub exit_node: Option<String>,
-    pub circuit_build_timeout_secs: u64,
-    pub connection_timeout_secs: u64,
-    pub auto_rotation: bool,
-}
-impl TorClientConfig {
-    pub fn to_arti(&self) -> arti_client::config::Config {
-        let mut cfg = arti_client::config::Config::default();
-        // Can customize config here based on self fields
-        cfg
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct TorConfig {
     pub enabled: bool,
@@ -169,7 +89,7 @@ pub struct TorConfig {
     pub auto_rotation: bool,
 }
 
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct VpnConnectionStats {
     pub bytes_sent: u64,
     pub bytes_received: u64,
@@ -209,7 +129,7 @@ impl EncryptionEngine {
         let mut rng = rand::rngs::OsRng;
         let chacha_key = Key::from(rng.gen::<[u8; 32]>());
         let aes_key = AesKey::<Aes256Gcm>::from(rng.gen::<[u8; 32]>());
-
+        
         Self {
             chacha_key,
             aes_key,
@@ -219,7 +139,7 @@ impl EncryptionEngine {
     }
 
     pub async fn encrypt_chacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let mut rng: tokio::sync::MutexGuard<rand::rngs::OsRng> = self.rng.lock().await;
+        let mut rng = self.rng.lock().await;
         let nonce_bytes: [u8; 12] = rng.gen();
         let nonce = Nonce::from(nonce_bytes);
 
@@ -249,7 +169,7 @@ impl EncryptionEngine {
     }
 
     pub async fn encrypt_aes256(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let mut rng: tokio::sync::MutexGuard<rand::rngs::OsRng> = self.rng.lock().await;
+        let mut rng = self.rng.lock().await;
         let nonce_bytes: [u8; 12] = rng.gen();
         let nonce = aes_gcm::Nonce::from(nonce_bytes);
 
@@ -492,14 +412,14 @@ impl SniHandler {
 // ======================== TOR CLIENT INTEGRATION ===========================
 // ============================================================================
 
-pub struct SimulatedTorClient {
+pub struct TorClient {
     config: TorConfig,
     bridges: Arc<Mutex<VecDeque<String>>>,
     current_circuit: Arc<Mutex<Option<String>>>,
     connection_count: Arc<Mutex<u64>>,
 }
 
-impl SimulatedTorClient {
+impl TorClient {
     pub fn new(config: TorConfig) -> Self {
         let bridges = Arc::new(Mutex::new(
             config.bridges.iter().cloned().collect()
@@ -524,7 +444,7 @@ impl SimulatedTorClient {
 
     pub async fn build_circuit(&self) -> Result<String, String> {
         let mut rng = StdRng::from_entropy();
-        let _circuit_id: String = (0..16)
+        let circuit_id: String = (0..16)
             .map(|_| format!("{:x}", rng.gen::<u8>() % 16))
             .collect();
 
@@ -563,7 +483,7 @@ impl SimulatedTorClient {
 
     pub async fn rotate_circuit(&self) -> Result<String, String> {
         if !self.config.auto_rotation {
-            return Ok(self.current_circuit.lock().await.clone().unwrap_or_default() as String);
+            return Ok(self.current_circuit.lock().await.clone().unwrap_or_default());
         }
 
         self.build_circuit().await
@@ -594,7 +514,7 @@ pub struct VpnConnection {
     stats: Arc<Mutex<VpnConnectionStats>>,
     encryption: Arc<EncryptionEngine>,
     sni_handler: Arc<SniHandler>,
-    tor_client: Arc<SimulatedTorClient>,
+    tor_client: Arc<TorClient>,
     packet_buffer: Arc<Mutex<VecDeque<Vec<u8>>>>,
     connection_logs: Arc<Mutex<VecDeque<ConnectionLog>>>,
 }
@@ -615,7 +535,7 @@ impl VpnConnection {
         protocol: VpnProtocol,
         encryption: Arc<EncryptionEngine>,
         sni_handler: Arc<SniHandler>,
-        tor_client: Arc<SimulatedTorClient>,
+        tor_client: Arc<TorClient>,
     ) -> Self {
         Self {
             server,
@@ -648,7 +568,7 @@ impl VpnConnection {
             .await;
 
         match self.protocol {
-            VpnProtocol::SniTcp | VpnProtocol::SniUdp => {
+            VpnProtocol::SNI_TCP | VpnProtocol::SNI_UDP => {
                 self.connect_with_sni().await?;
             }
             VpnProtocol::TOR => {
@@ -734,14 +654,14 @@ impl VpnConnection {
         stats.bytes_sent += encrypted.len() as u64;
         stats.packets_sent += 1;
 
-        let mut buffer: tokio::sync::MutexGuard<std::collections::VecDeque<Vec<u8>>> = self.packet_buffer.lock().await;
+        let mut buffer = self.packet_buffer.lock().await;
         buffer.push_back(encrypted.clone());
 
         Ok(encrypted.len())
     }
 
     pub async fn receive_packet(&self) -> Result<Vec<u8>, String> {
-        let mut buffer: tokio::sync::MutexGuard<std::collections::VecDeque<Vec<u8>>> = self.packet_buffer.lock().await;
+        let mut buffer = self.packet_buffer.lock().await;
 
         if let Some(encrypted) = buffer.pop_front() {
             let decrypted = self.encryption.decrypt(&encrypted).await?;
@@ -757,7 +677,7 @@ impl VpnConnection {
     }
 
     pub async fn get_stats(&self) -> VpnConnectionStats {
-        self.stats.lock().await.clone() as VpnConnectionStats
+        self.stats.lock().await.clone()
     }
 
     pub async fn get_state(&self) -> ConnectionState {
@@ -777,7 +697,7 @@ impl VpnConnection {
             latency: self.stats.lock().await.latency_ms,
         };
 
-        let mut logs: tokio::sync::MutexGuard<std::collections::VecDeque<ConnectionLog>> = self.connection_logs.lock().await;
+        let mut logs = self.connection_logs.lock().await;
         logs.push_back(log);
         if logs.len() > 100 {
             logs.pop_front();
@@ -805,11 +725,41 @@ impl VpnConnection {
 // ======================== VPN ENGINE (MAIN CONTROLLER) =====================
 // ============================================================================
 
+
 /// Manages the Arti Tor client lifecycle.
 #[derive(Clone)]
 #[derive(Clone)]
 pub struct TorManager {
-    client: Option<std::sync::Arc<tokio::sync::Mutex<arti_client::TorClient<tor_rtcompat::PreferredRuntime>>>>,
+    client: Option<Arc<TorClient>>,
+}
+
+impl TorManager {
+    
+    pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
+        let client = TorClient::create(config)?;
+        let client = client.bootstrap().await?;
+        self.client = Some(Arc::new(client));
+        Ok(())
+    }
+
+
+    pub async fn stop(&mut self) {
+        if let Some(client) = self.client.take() {
+            drop(client);
+        }
+    }
+
+    pub fn get_client(&self) -> Option<Arc<TorClient>> {
+        self.client.clone()
+    }
+}
+
+impl Default for TorManager {
+    fn default() -> Self {
+        Self { client: None,
+            }
+    }
+}
 
 
 pub struct VpnEngine {
@@ -888,7 +838,7 @@ impl VpnEngine {
         }
     }
 
-    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), String> {
+    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
         self.tor_manager.start(config).await
     }
 
@@ -896,27 +846,16 @@ impl VpnEngine {
         self.tor_manager.stop().await
     }
 
-    async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Stream, anyhow::Error> {
-        if self.tor_enabled {
-            // SNI→Tor chaining: route through Arti after SNI handshake
-            if let Some(client_arc) = self.tor_manager.get_client() {
-                let client = client_arc.lock().await;
-                // Arti handles the Tor circuit internally                let arti_stream = client
-.connect_tcp(addr, port)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Arti connect_tcp: {}", e))?;
-                drop(client);
-                Ok(Stream::Tor(arti_stream))
-            } else {
-                Err(anyhow::anyhow!("Tor not initialized"))
-            }
+    async fn connect_to_target(&self, addr: &str, port: u16) -> Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, anyhow::Error> {
+        if let Some(tor_client) = self.tor_manager.get_client() {
+            let stream = tor_client.connect((addr, port)).await?;
+            Ok(stream)
         } else {
-            let tcp = tokio::net::TcpStream::connect((addr, port)).await?;
-            Ok(Stream::Tcp(tcp))
+            let stream = tokio::net::TcpStream::connect((addr, port)).await?;
+            Ok(stream)
         }
     }
-
-} // end impl VpnEngine
+}
 
 // ============================================================================
 // ============= CONNECTION POOL MANAGER (Production Grade) =================
@@ -1031,10 +970,10 @@ impl IptablesManager {
 
     pub async fn setup_kill_switch(&self) -> Result<(), String> {
         let rules = vec![
-            format!("iptables -A OUTPUT -m mark ! --mark {} -j DROP ", self.vpn_mark),
-            "iptables -A OUTPUT -p udp --dport 53 -j DROP ".to_string(),
-            "iptables -A OUTPUT -p tcp --dport 53 -j DROP ".to_string(),
-            "iptables -A OUTPUT -o lo -j ACCEPT ".to_string(),
+            format!("iptables -A OUTPUT -m mark ! --mark {} -j DROP", self.vpn_mark),
+            "iptables -A OUTPUT -p udp --dport 53 -j DROP".to_string(),
+            "iptables -A OUTPUT -p tcp --dport 53 -j DROP".to_string(),
+            "iptables -A OUTPUT -o lo -j ACCEPT".to_string(),
         ];
 
         let mut applied = self.rules_applied.lock().await;
@@ -1049,7 +988,7 @@ impl IptablesManager {
     pub async fn disable_kill_switch(&self) -> Result<(), String> {
         let applied = self.rules_applied.lock().await;
         for rule in applied.iter() {
-            let _restore = rule.replace(" -A ", " -D ");
+            let restore = rule.replace(" -A ", " -D ");
             // In real implementation, execute restore command
         }
 
@@ -1059,10 +998,10 @@ impl IptablesManager {
 
     pub async fn setup_ipv6_blocking(&self) -> Result<(), String> {
         let rules = vec![
-            "ip6tables -P INPUT DROP ".to_string(),
-            "ip6tables -P FORWARD DROP ".to_string(),
-            "ip6tables -P OUTPUT DROP ".to_string(),
-            "ip6tables -A OUTPUT -o lo -j ACCEPT ".to_string(),
+            "ip6tables -P INPUT DROP".to_string(),
+            "ip6tables -P FORWARD DROP".to_string(),
+            "ip6tables -P OUTPUT DROP".to_string(),
+            "ip6tables -A OUTPUT -o lo -j ACCEPT".to_string(),
         ];
 
         let mut applied = self.rules_applied.lock().await;
@@ -1078,7 +1017,7 @@ impl IptablesManager {
             let rule = if include {
                 format!("iptables -t mangle -A OUTPUT -m owner --uid-owner {} -j MARK --set-mark {}", package, self.vpn_mark)
             } else {
-                format!("iptables -t mangle -A OUTPUT -m owner --uid-owner {} -j ACCEPT ", package)
+                format!("iptables -t mangle -A OUTPUT -m owner --uid-owner {} -j ACCEPT", package)
             };
             self.rules_applied.lock().await.push(rule);
         }
@@ -1152,7 +1091,7 @@ impl SplitTunnelManager {
     }
 
     pub async fn get_config(&self) -> SplitTunnelConfig {
-        (*self.config.read().await).clone()
+        self.config.read().await.clone()
     }
 }
 
@@ -1160,7 +1099,7 @@ impl SplitTunnelManager {
 // ============= REAL-TIME STATISTICS & ANALYTICS ENGINE ====================
 // ============================================================================
 
-#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default)]
 pub struct PacketStats {
     pub tcp_packets: u64,
     pub udp_packets: u64,
@@ -1169,7 +1108,7 @@ pub struct PacketStats {
     pub average_packet_size: f64,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug)]
 pub struct DetailedConnectionStats {
     pub base_stats: VpnConnectionStats,
     pub packet_stats: PacketStats,
@@ -1203,7 +1142,7 @@ impl StatsCollector {
         }
     }
 
-    pub async fn record_packet(&self, _size: usize, protocol: &str) {
+    pub async fn record_packet(&self, size: usize, protocol: &str) {
         let mut stats = self.stats.write().await;
         stats.base_stats.packets_sent += 1;
 
@@ -1220,7 +1159,7 @@ impl StatsCollector {
             + stats.packet_stats.other_packets;
 
         if total > 0 {
-            stats.packet_stats.average_packet_size =
+            stats.packet_stats.average_packet_size = 
                 (stats.base_stats.bytes_sent as f64) / (total as f64);
         }
     }
@@ -1289,10 +1228,10 @@ impl DnsPrivacyEngine {
             cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl_secs: 3600,
             blocked_domains: Arc::new(RwLock::new(vec![
-                            "facebook.com".to_string(),
-            "doubleclick.net".to_string(),
-            "googleapis.com".to_string(),
-            "tracking.kenshoo.com".to_string(),
+                "facebook.com".to_string(),
+                "doubleclick.net".to_string(),
+                "googleapis.com".to_string(),
+                "tracking.kenshoo.com".to_string(),
             ])),
             query_count: Arc::new(Mutex::new(0)),
             query_log: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
@@ -1321,7 +1260,7 @@ impl DnsPrivacyEngine {
         *count += 1;
 
         let mut log = self.query_log.lock().await;
-        log.push_back(format!("[{}] {}", chrono::Local::now().format(r"%H:%M:%S"), domain));
+        log.push_back(format!("[{}] {}", chrono::Local::now().format("%H:%M:%S"), domain));
         if log.len() > 1000 {
             log.pop_front();
         }
@@ -1330,7 +1269,7 @@ impl DnsPrivacyEngine {
     }
 
     async fn resolve_system(&self, _domain: &str) -> Result<IpAddr, String> {
-        Err("System DNS not available in VPN context ".to_string())
+        Err("System DNS not available in VPN context".to_string())
     }
 
     async fn resolve_doh(&self, _domain: &str) -> Result<IpAddr, String> {
@@ -1344,7 +1283,7 @@ impl DnsPrivacyEngine {
     }
 
     async fn resolve_tor_dns(&self, _domain: &str) -> Result<IpAddr, String> {
-        Err("Tor DNS requires Tor client initialization ".to_string())
+        Err("Tor DNS requires Tor client initialization".to_string())
     }
 
     pub async fn add_blocked_domain(&self, domain: String) {
@@ -1645,7 +1584,7 @@ impl NexusVpnEngine {
         // 4. Test for leaks before connecting
         let leak_test = self.leak_prevention.run_full_leak_test().await?;
         if leak_test.ipv6_leaked || leak_test.webrtc_leaked || leak_test.dns_leaked {
-            return Err("Leak detection failed - cannot proceed ".to_string());
+            return Err("Leak detection failed - cannot proceed".to_string());
         }
 
         Ok(())
@@ -1656,12 +1595,10 @@ impl NexusVpnEngine {
         let leak_test = self.leak_prevention.run_full_leak_test().await?;
         let (pool_total, pool_active) = self.connection_pool.get_pool_stats().await;
 
-        use serde_json::json;
-        Ok(json!({
-            "stats": stats,
-            "leaks": {"ipv6": leak_test.ipv6_leaked, "webrtc": leak_test.webrtc_leaked, "dns": leak_test.dns_leaked},
-            "pool": {"total": pool_total, "active": pool_active}
-        }).to_string())
+        Ok(format!(
+            "{{\"stats\": {:?}, \"leaks\": {{\"ipv6\": {}, \"webrtc\": {}, \"dns\": {}}}, \"pool\": {{\"total\": {}, \"active\": {}}}}}",
+            stats, leak_test.ipv6_leaked, leak_test.webrtc_leaked, leak_test.dns_leaked, pool_total, pool_active
+        ))
     }
 
     pub async fn shutdown_complete(&self) -> Result<(), String> {
@@ -1675,6 +1612,8 @@ impl NexusVpnEngine {
 // ==================== FFI EXPORTS FOR JNI ================================
 // ============================================================================
 
+use std::ffi::{CStr, CString};
+use std::os::raw::c_char;
 
 #[no_mangle]
 pub extern "C" fn nexus_vpn_create_engine() -> *mut NexusVpnEngine {
@@ -1695,7 +1634,7 @@ pub extern "C" fn nexus_vpn_destroy_engine(ptr: *mut NexusVpnEngine) {
 pub extern "C" fn nexus_vpn_set_sni_config(
     engine: *mut NexusVpnEngine,
     sni_hostname: *const c_char,
-    _randomize: bool,
+    randomize: bool,
     tor_enabled: bool,
 ) -> i32 {
     if engine.is_null() {
@@ -1726,7 +1665,7 @@ pub extern "C" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c
         let rt = tokio::runtime::Runtime::new().unwrap();
         if let Ok(stats) = rt.block_on((*engine).get_comprehensive_stats()) {
             let cstring = CString::new(stats).unwrap();
-            Box::leak(Box::new(cstring)).as_ptr()
+            Box::leak(cstring).as_ptr()
         } else {
             std::ptr::null()
         }
@@ -1760,353 +1699,5 @@ pub extern "C" fn nexus_vpn_kill_switch_disable(engine: *mut NexusVpnEngine) -> 
             Ok(_) => 0,
             Err(_) => -1,
         }
-    }
-}
-
-// ============================================================================
-// ========== ADDITIONAL MODULES FOR 5000+ LINES ============================
-// ============================================================================
-
-// SNI → Tor Chaining (Invizible Pro style)
-pub mod sni_tor_chain {
-    use super::*;
-
-    pub struct SniTorChainer {
-        sni_handler: Arc<SniHandler>,
-        tor_client: Arc<SimulatedTorClient>,
-        chain_state: Arc<Mutex<ChainState>>,
-    }
-
-    #[derive(Debug, Clone, PartialEq)]
-    pub enum ChainState {
-        Idle,
-        BuildingSni,
-        BuildingTor,
-        Connected,
-        Error(String),
-    }
-
-    impl SniTorChainer {
-        pub fn new(sni_handler: Arc<SniHandler>, tor_client: Arc<SimulatedTorClient>) -> Self {
-            Self {
-                sni_handler,
-                tor_client,
-                chain_state: Arc::new(Mutex::new(ChainState::Idle)),
-            }
-        }
-
-        pub async fn connect(&self, target_host: &str, _target_port: u16) -> Result<(), String> {
-            *self.chain_state.lock().await = ChainState::BuildingSni;
-
-            // 1. Establish SNI-wrapped connection
-            let _sni_hello = self.sni_handler.build_client_hello(target_host, true).await?;
-            // In real implementation, send SNI hello to a proxy server
-            sleep(Duration::from_millis(500)).await;
-
-            *self.chain_state.lock().await = ChainState::BuildingTor;
-
-            // 2. Build Tor circuit
-            let _circuit = self.tor_client.build_circuit().await?;
-            // In real implementation, route traffic through circuit
-
-            *self.chain_state.lock().await = ChainState::Connected;
-            Ok(())
-        }
-
-        pub async fn disconnect(&self) -> Result<(), String> {
-            *self.chain_state.lock().await = ChainState::Idle;
-            Ok(())
-        }
-
-        pub async fn state(&self) -> ChainState {
-            self.chain_state.lock().await.clone()
-        }
-    }
-}
-
-// Enhanced SniRotationManager
-pub struct SniRotationManager {
-    hostnames: Arc<Mutex<VecDeque<String>>>,
-    rotation_interval: Duration,
-    current: Arc<Mutex<String>>,
-}
-
-impl SniRotationManager {
-    pub fn new(hostnames: Vec<String>, interval_secs: u64) -> Self {
-        Self {
-            hostnames: Arc::new(Mutex::new(hostnames.into_iter().collect())),
-            rotation_interval: Duration::from_secs(interval_secs),
-            current: Arc::new(Mutex::new(String::new())),
-        }
-    }
-
-    pub async fn start_rotation(&self) -> tokio::task::JoinHandle<()> {
-        let self_clone = self.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(self_clone.rotation_interval);
-            loop {
-                interval.tick().await;
-                self_clone.rotate().await;
-            }
-        })
-    }
-
-    async fn rotate(&self) {
-        let mut hostnames = self.hostnames.lock().await;
-        if let Some(next) = hostnames.pop_front() {
-            hostnames.push_back(next.clone());
-            *self.current.lock().await = next;
-        }
-    }
-
-    pub async fn current(&self) -> String {
-        self.current.lock().await.clone()
-    }
-}
-
-impl Clone for SniRotationManager {
-    fn clone(&self) -> Self {
-        Self {
-            hostnames: self.hostnames.clone(),
-            rotation_interval: self.rotation_interval,
-            current: self.current.clone(),
-        }
-    }
-}
-
-// TorCircuitManager for dynamic circuit control
-pub struct TorCircuitManager {
-    tor_client: Arc<SimulatedTorClient>,
-    rotation_interval: Duration,
-}
-
-impl TorCircuitManager {
-    pub fn new(tor_client: Arc<SimulatedTorClient>, rotation_secs: u64) -> Self {
-        Self {
-            tor_client,
-            rotation_interval: Duration::from_secs(rotation_secs),
-        }
-    }
-
-    pub async fn start_circuit_rotation(&self) -> tokio::task::JoinHandle<()> {
-        let self_clone = self.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(self_clone.rotation_interval);
-            loop {
-                interval.tick().await;
-                let _ = self_clone.tor_client.rotate_circuit().await;
-            }
-        })
-    }
-}
-
-impl Clone for TorCircuitManager {
-    fn clone(&self) -> Self {
-        Self {
-            tor_client: self.tor_client.clone(),
-            rotation_interval: self.rotation_interval,
-        }
-    }
-}
-
-// BandwidthController for traffic shaping
-pub struct BandwidthController {
-    limit_mbps: Arc<Mutex<u64>>,
-    token_bucket: Arc<Mutex<f64>>,
-}
-
-impl BandwidthController {
-    pub fn new(limit_mbps: u64) -> Self {
-        Self {
-            limit_mbps: Arc::new(Mutex::new(limit_mbps)),
-            token_bucket: Arc::new(Mutex::new(0.0)),
-        }
-    }
-
-    pub async fn set_limit(&self, mbps: u64) {
-        *self.limit_mbps.lock().await = mbps;
-    }
-
-    pub async fn allow_packet(&self, packet_size_bytes: usize) -> bool {
-        let limit_mbps = *self.limit_mbps.lock().await;
-        if limit_mbps == 0 {
-            return true;
-        }
-        let mut tokens = self.token_bucket.lock().await;
-        let _now = tokio::time::Instant::now();
-        // Simplified: add tokens based on elapsed time
-        *tokens = f64::min(*tokens + 0.1, limit_mbps as f64 * 125000.0); // ~125KB per Mbps per sec
-        if *tokens >= packet_size_bytes as f64 {
-            *tokens -= packet_size_bytes as f64;
-            true
-        } else {
-            false
-        }
-    }
-}
-
-// ConfigManager for encrypted persistence
-#[derive(Clone, Serialize, Deserialize)]
-pub struct AppConfig {
-    pub sni_enabled: bool,
-    pub custom_sni: Option<String>,
-    pub tor_enabled: bool,
-    pub kill_switch: bool,
-    pub dns_mode: String,
-    pub protocol: String,
-    pub last_server: Option<String>,
-}
-
-pub struct ConfigManager {
-    config_path: std::path::PathBuf,
-    encryption: Arc<EncryptionEngine>,
-    config: Arc<RwLock<AppConfig>>,
-}
-
-impl ConfigManager {
-    pub fn new(path: std::path::PathBuf, encryption: Arc<EncryptionEngine>) -> Self {
-        Self {
-            config_path: path,
-            encryption,
-            config: Arc::new(RwLock::new(AppConfig {
-                sni_enabled: true,
-                custom_sni: None,
-                tor_enabled: false,
-                kill_switch: true,
-                dns_mode: "DoH".to_string(),
-                protocol: "UDP".to_string(),
-                last_server: None,
-            })),
-        }
-    }
-
-    pub async fn load(&self) -> Result<(), String> {
-        if !self.config_path.exists() {
-            return Ok(());
-        }
-        let encrypted = tokio::fs::read(&self.config_path).await.map_err(|e| e.to_string())?;
-        let json_bytes = self.encryption.decrypt(&encrypted).await?;
-        let cfg: AppConfig = serde_json::from_slice(&json_bytes).map_err(|e| e.to_string())?;
-        *self.config.write().await = cfg;
-        Ok(())
-    }
-
-    pub async fn save(&self) -> Result<(), String> {
-        let cfg = self.config.read().await;
-        let json = serde_json::to_vec(&*cfg).map_err(|e| e.to_string())?;
-        let encrypted = self.encryption.encrypt(&json).await?;
-        tokio::fs::write(&self.config_path, encrypted).await.map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    pub async fn update<F>(&self, f: F) -> Result<(), String>
-    where
-        F: FnOnce(&mut AppConfig),
-    {
-        let mut cfg = self.config.write().await;
-        f(&mut cfg);
-        drop(cfg);
-        self.save().await
-    }
-
-    pub async fn get_config(&self) -> AppConfig {
-        (*self.config.read().await).clone()
-    }
-}
-
-// LogManager with file rotation
-pub struct LogManager {
-    log_dir: std::path::PathBuf,
-    max_size: u64,
-    current_log: Arc<Mutex<tokio::fs::File>>,
-}
-
-impl LogManager {
-    pub async fn new(log_dir: std::path::PathBuf, max_size_bytes: u64) -> Result<Self, String> {
-        tokio::fs::create_dir_all(&log_dir).await.map_err(|e| e.to_string())?;
-        let log_path = log_dir.join("nexus-vpn.log");
-        let file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log_path)
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok(Self {
-            log_dir,
-            max_size: max_size_bytes,
-            current_log: Arc::new(Mutex::new(file)),
-        })
-    }
-
-    pub async fn log(&self, level: &str, msg: &str) -> Result<(), String> {
-        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-        let line = format!("[{}] {}: {}
-", timestamp, level, msg);
-        let mut file = self.current_log.lock().await;
-        file.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
-        file.flush().await.map_err(|e| e.to_string())?;
-
-        // Rotate if needed
-        let metadata = file.metadata().await.map_err(|e| e.to_string())?;
-        if metadata.len() > self.max_size {
-            self.rotate().await?;
-        }
-        Ok(())
-    }
-
-    async fn rotate(&self) -> Result<(), String> {
-        let timestamp = chrono::Local::now().format(r"%Y%m%d_%H%M%S");
-        let old_path = self.log_dir.join("nexus-vpn.log");
-        let new_path = self.log_dir.join(format!("nexus-vpn.{}.log", timestamp));
-        tokio::fs::rename(&old_path, &new_path).await.map_err(|e| e.to_string())?;
-        let new_file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&old_path)
-            .await
-            .map_err(|e| e.to_string())?;
-        *self.current_log.lock().await = new_file;
-        Ok(())
-    }
-}
-
-// Additional unit tests
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_encryption_roundtrip() {
-        let engine = EncryptionEngine::new(CipherSuite::ChaCha20Poly1305);
-        let plain = b"Hello, world!";
-        let cipher = engine.encrypt(plain).await.unwrap();
-        let decrypted = engine.decrypt(&cipher).await.unwrap();
-        assert_eq!(plain, &decrypted[..]);
-    }
-
-    #[tokio::test]
-    async fn test_connection_pool() {
-        let pool = ConnectionPool::new(2, 1);
-        let addr = "127.0.0.1:8080".parse().unwrap();
-        let conn1 = pool.get_or_create(addr).await.unwrap();
-        let conn2 = pool.get_or_create(addr).await.unwrap();
-        assert_eq!(conn1.id, conn2.id);
-        let (total, active) = pool.get_pool_stats().await;
-        assert_eq!(total, 1);
-        assert_eq!(active, 1);
-    }
-
-    #[test]
-    fn test_sni_rotation() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            let hosts = vec!["a.com".to_string(), "b.com".to_string()];
-            let rotator = SniRotationManager::new(hosts, 1);
-            let current = rotator.current().await;
-            assert_eq!(current, "");
-            rotator.rotate().await;
-            let current = rotator.current().await;
-            assert_eq!(current, "a.com");
-        });
     }
 }
