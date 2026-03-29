@@ -1,3 +1,7 @@
+use arti_client::TorClientConfig;
+use tor_rtcompat::Runtime;
+use tor_rtcompat::tokio::TokioRustlsRuntime;
+use arti_client::TorClient as ArtiTorClient;
 use tokio::io::AsyncWriteExt;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
@@ -5,8 +9,7 @@ use tokio::io::AsyncWriteExt;
 
 use tokio::sync::{RwLock, Mutex, mpsc};
 use tokio::time::{interval, Duration, sleep};
-// Placeholder for arti client config
-pub struct TorClientConfig;
+
 use tokio::task::JoinHandle;
 use std::sync::Arc;
 use std::collections::{HashMap, VecDeque};
@@ -734,7 +737,7 @@ impl VpnConnection {
 /// Manages the Arti Tor client lifecycle.
 #[derive(Clone)] // Only one derive
 pub struct TorManager {
-    client: Option<Arc<SimulatedTorClient>>,
+    client: Option<Arc<ArtiTorClient<TokioRustlsRuntime>>>,
 }
 
 impl TorManager {
@@ -751,7 +754,7 @@ impl TorManager {
         }
     }
 
-    pub fn get_client(&self) -> Option<Arc<SimulatedTorClient>> {
+    pub fn get_client(&self) -> Option<Arc<ArtiTorClient<TokioRustlsRuntime>>> {
         self.client.clone()
     }
 }
@@ -850,8 +853,7 @@ impl VpnEngine {
 
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, anyhow::Error> {
         if let Some(_tor_client) = self.tor_manager.get_client() {
-            // FIXME: tor_client.connect not implemented
-        let stream = tokio::net::TcpStream::connect((addr, port)).await?;
+            let stream = tor_client.connect((addr, port)).await?;
             Ok(stream)
         } else {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
