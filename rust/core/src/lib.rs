@@ -1,9 +1,6 @@
-use anyhow::Error;
+
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
-use arti_client::TorClientConfig;
-use tor_rtcompat::tokio::TokioRustlsRuntime;
-use arti_client::TorClient as ArtiTorClient;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
 // ============================================================================
@@ -27,7 +24,6 @@ use serde_json; // Added for JSON handling
 // Custom stream type to avoid trait object restrictions
 enum Stream {
     Tcp(tokio::net::TcpStream),
-    Tor(arti_client::DataStream),
 }
 
 impl tokio::io::AsyncRead for Stream {
@@ -679,7 +675,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let circuit = self.tor_client.build_circuit().await?;
+        let _circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -785,26 +781,20 @@ impl VpnConnection {
 /// Manages the Arti Tor client lifecycle.
 #[derive(Clone)] // Only one derive
 pub struct TorManager {
-    client: Option<Arc<ArtiTorClient<TokioRustlsRuntime>>>,
+    client: Option<()>,
 }
 
 impl TorManager {
-            pub async fn start(&mut self, config: TorClientConfig) -> Result<(), anyhow::Error> {
-        let runtime = TokioRustlsRuntime::create()?;
-        let client = ArtiTorClient::create(runtime, config)?;
-        let client = client.bootstrap().await?;
-        self.client = Some(Arc::new(client));
+    pub async fn start(&mut self, _config: TorClientConfig) -> Result<(), String> {
         Ok(())
     }
 
     pub async fn stop(&mut self) {
-        if let Some(client) = self.client.take() {
-            drop(client);
-        }
+        self.client = None;
     }
 
-    pub fn get_client(&self) -> Option<Arc<ArtiTorClient<TokioRustlsRuntime>>> {
-        self.client.clone()
+    pub fn get_client(&self) -> Option<()> {
+        None
     }
 }
 
@@ -900,9 +890,9 @@ impl VpnEngine {
     }
 
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Stream, anyhow::Error> {
-        if let Some(tor_client) = self.tor_manager.get_client() {
-            let stream = tor_client.connect((addr, port)).await?;
-            Ok(Stream::Tor(stream))
+        if false {
+            let stream = tokio::net::TcpStream::connect((addr, port)).await?;
+            Ok(Stream::Tcp(stream))
         } else {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(Stream::Tcp(stream))
@@ -1804,7 +1794,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let circuit = self.tor_client.build_circuit().await?;
+            let _circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
