@@ -24,8 +24,9 @@ chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Arti with no sqlite (persistent-state disabled)
-tor-rtcompat = { version = "0.40.0", features = ["tokio", "rustls"], default-features = false }
+# Arti with no persistent state (no sqlite)
+arti-client = { version = "0.40.0", default-features = false, features = ["rustls", "tokio"] }
+tor-rtcompat = { version = "0.40.0", features = ["tokio", "rustls"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk = "0.8"
@@ -33,10 +34,3 @@ ndk-glue = "0.7"
 
 [dev-dependencies]
 criterion = "0.5"
-
-
-
-
-[patch.crates-io]
-
-arti-client = { version = "0.40.0", default-features = false, features = ["rustls", "tokio"] }
