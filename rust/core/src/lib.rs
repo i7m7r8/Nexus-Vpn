@@ -146,10 +146,7 @@ pub struct TorClientConfig {
 }
 impl TorClientConfig {
     pub fn to_arti(&self) -> tor_config::Config {
-        // v0.40: Return tor_config::Config directly
-        let mut cfg = tor_config::Config::default();
-        // Map fields as needed for your use case
-        cfg
+        tor_config::Config::default()
     }
 }
 }
@@ -2132,4 +2129,5 @@ mod tests {
         });
     }
 }
+
 
