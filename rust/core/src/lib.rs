@@ -6,23 +6,17 @@ use arti_client::TorClient as ArtiTorClient;
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
 // ============================================================================
 
-use tokio::sync::{RwLock, Mutex, mpsc};
-use tokio::time::{interval, Duration, sleep};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use tokio::task::JoinHandle;
 use std::sync::Arc;
 use std::collections::{HashMap, VecDeque};
-use std::io;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::Rng;
 use sha2::{Sha256, Digest};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use aes_gcm::{Aes256Gcm, Key as AesKey};
-use aes_gcm::aead::{Aead, KeyInit, Payload};
-use rustls::{ClientConfig, ClientConnection, RootCertStore};
-use std::io::Cursor;
 use derivative::Derivative;
 use chrono; // Added for timestamp formatting
 use serde::{Serialize, Deserialize}; // Added for config serialization
@@ -630,7 +624,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let circuit = self.tor_client.build_circuit().await?;
+        let _circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -850,11 +844,15 @@ impl VpnEngine {
         self.tor_manager.stop().await
     }
 
-    async fn connect_to_target(&self, addr: &str, port: u16) -> Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, anyhow::Error> {
+    async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Box<dyn tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send>, anyhow::Error> {
         if let Some(tor_client) = self.tor_manager.get_client() {
             let stream = tor_client.connect((addr, port)).await?;
-            Ok(stream)
+            Ok(Box::new(stream))
         } else {
+            let stream = tokio::net::TcpStream::connect((addr, port)).await?;
+            Ok(Box::new(stream))
+        }
+    } else {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(stream)
         }
@@ -1749,7 +1747,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let circuit = self.tor_client.build_circuit().await?;
+            let _circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
