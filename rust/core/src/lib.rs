@@ -1334,7 +1334,7 @@ impl DnsPrivacyEngine {
         *count += 1;
 
         let mut log = self.query_log.lock().await;
-        log.push_back(format!("[{}] {}", chrono::Local::now().format("%H:%M:%S"), domain));
+        log.push_back(format!("[{}] {}", chrono::Local::now().format(r#"%H:%M:%S"#), domain));
         if log.len() > 1000 {
             log.pop_front();
         }
@@ -2045,7 +2045,7 @@ pub struct LogManager {
 impl LogManager {
     pub async fn new(log_dir: std::path::PathBuf, max_size_bytes: u64) -> Result<Self, String> {
         tokio::fs::create_dir_all(&log_dir).await.map_err(|e| e.to_string())?;
-        let log_path = log_dir.join("nexus-vpn.log");
+        let log_path = log_dir.join(r#"nexus-vpn.log"#);
         let file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -2075,9 +2075,9 @@ impl LogManager {
     }
 
     async fn rotate(&self) -> Result<(), String> {
-        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-        let old_path = self.log_dir.join("nexus-vpn.log");
-        let new_path = self.log_dir.join(format!("nexus-vpn.{}.log", timestamp));
+        let timestamp = chrono::Local::now().format(r#"%Y%m%d_%H%M%S"#);
+        let old_path = self.log_dir.join(r#"nexus-vpn.log"#);
+        let new_path = self.log_dir.join(format!(r#"nexus-vpn.{}.log"#, timestamp));
         tokio::fs::rename(&old_path, &new_path).await.map_err(|e| e.to_string())?;
         let new_file = tokio::fs::OpenOptions::new()
             .create(true)
@@ -2120,13 +2120,13 @@ mod tests {
     fn test_sni_rotation() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let hosts = vec!["a.com".to_string(), "b.com".to_string()];
+            let hosts = vec![r#"a.com"#.to_string(), r#"b.com"#.to_string()];
             let rotator = SniRotationManager::new(hosts, 1);
             let current = rotator.current().await;
             assert_eq!(current, "");
             rotator.rotate().await;
             let current = rotator.current().await;
-            assert_eq!(current, "a.com");
+            assert_eq!(current, r#"a.com"#);
         });
     }
 }
