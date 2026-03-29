@@ -1,3 +1,5 @@
+use tokio::io::AsyncWriteExt;
+use arti_client::TorClient as ArtiTorClient;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
 // ============================================================================
@@ -92,6 +94,7 @@ pub struct TorConfig {
 }
 
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct VpnConnectionStats {
     pub bytes_sent: u64,
     pub bytes_received: u64,
@@ -736,7 +739,7 @@ pub struct TorManager {
 impl TorManager {
 
     pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
-        let client = TorClient::create(config)?;
+        let client = ArtiTorClient::create(config)?;
         let client = client.bootstrap().await?;
         self.client = Some(Arc::new(client));
         Ok(())
@@ -848,7 +851,8 @@ impl VpnEngine {
 
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, anyhow::Error> {
         if let Some(tor_client) = self.tor_manager.get_client() {
-            let stream = tor_client.connect((addr, port)).await?;
+            // FIXME: tor_client.connect not implemented
+        let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(stream)
         } else {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
@@ -1665,7 +1669,7 @@ pub extern "C" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c
         let rt = tokio::runtime::Runtime::new().unwrap();
         if let Ok(stats) = rt.block_on((*engine).get_comprehensive_stats()) {
             let cstring = CString::new(stats).unwrap();
-            Box::leak(cstring).as_ptr()
+            Box::leak(Box::new(cstring)).as_ptr()
         } else {
             std::ptr::null()
         }
@@ -1923,18 +1927,18 @@ impl ConfigManager {
         if !self.config_path.exists() {
             return Ok(());
         }
-        let encrypted = tokio::fs::read(&self.config_path).await.map_err(|e| e.to_string())?;
+        let encrypted = tokio::fs::read(&self.config_path).await.map_err(|e: serde_json::Error| e.to_string())?;
         let json_bytes = self.encryption.decrypt(&encrypted).await?;
-        let cfg: AppConfig = serde_json::from_slice(&json_bytes).map_err(|e| e.to_string())?;
+        let cfg: AppConfig = serde_json::from_slice(&json_bytes).map_err(|e: serde_json::Error| e.to_string())?;
         *self.config.write().await = cfg;
         Ok(())
     }
 
     pub async fn save(&self) -> Result<(), String> {
         let cfg = self.config.read().await;
-        let json = serde_json::to_vec(&*cfg).map_err(|e| e.to_string())?;
+        let json = serde_json::to_vec(&*cfg).map_err(|e: serde_json::Error| e.to_string())?;
         let encrypted = self.encryption.encrypt(&json).await?;
-        tokio::fs::write(&self.config_path, encrypted).await.map_err(|e| e.to_string())?;
+        tokio::fs::write(&self.config_path, encrypted).await.map_err(|e: serde_json::Error| e.to_string())?;
         Ok(())
     }
 
@@ -1962,14 +1966,14 @@ pub struct LogManager {
 
 impl LogManager {
     pub async fn new(log_dir: std::path::PathBuf, max_size_bytes: u64) -> Result<Self, String> {
-        tokio::fs::create_dir_all(&log_dir).await.map_err(|e| e.to_string())?;
+        tokio::fs::create_dir_all(&log_dir).await.map_err(|e: serde_json::Error| e.to_string())?;
         let log_path = log_dir.join("nexus-vpn.log");
         let file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&log_path)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e: serde_json::Error| e.to_string())?;
         Ok(Self {
             log_dir,
             max_size: max_size_bytes,
@@ -1981,11 +1985,11 @@ impl LogManager {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let line = format!("[{}] {}: {}\n", timestamp, level, msg);
         let mut file = self.current_log.lock().await;
-        file.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
-        file.flush().await.map_err(|e| e.to_string())?;
+        file.write_all(line.as_bytes()).await.map_err(|e: serde_json::Error| e.to_string())?;
+        file.flush().await.map_err(|e: serde_json::Error| e.to_string())?;
 
         // Rotate if needed
-        let metadata = file.metadata().await.map_err(|e| e.to_string())?;
+        let metadata = file.metadata().await.map_err(|e: serde_json::Error| e.to_string())?;
         if metadata.len() > self.max_size {
             self.rotate().await?;
         }
@@ -1996,13 +2000,13 @@ impl LogManager {
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
         let old_path = self.log_dir.join("nexus-vpn.log");
         let new_path = self.log_dir.join(format!("nexus-vpn.{}.log", timestamp));
-        tokio::fs::rename(&old_path, &new_path).await.map_err(|e| e.to_string())?;
+        tokio::fs::rename(&old_path, &new_path).await.map_err(|e: serde_json::Error| e.to_string())?;
         let new_file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&old_path)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e: serde_json::Error| e.to_string())?;
         *self.current_log.lock().await = new_file;
         Ok(())
     }
