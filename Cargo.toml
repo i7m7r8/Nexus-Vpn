@@ -1,9 +1,7 @@
 [workspace]
-members = ["rust/core"]
 resolver = "2"
+members = ["rust/core"]
 
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
+[patch.crates-io]
+rusqlite = { version = "0.38", features = ["bundled"] }
+libsqlite3-sys = { version = "0.36", features = ["bundled"] }
