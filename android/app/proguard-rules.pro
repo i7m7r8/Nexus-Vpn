@@ -1,5 +1,3 @@
 -keepclasseswithmembernames class * { native <methods>; }
 -keepclassmembers class com.nexusvpn.android.service.NexusVpnService { private static native *** *; }
 -keep class com.nexusvpn.** { *; }
--keep class androidx.compose.** { *; }
--dontwarn androidx.compose.**

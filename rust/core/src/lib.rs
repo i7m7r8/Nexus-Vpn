@@ -149,7 +149,6 @@ impl TorClientConfig {
         tor_config::Config::default()
     }
 }
-}
 
 #[derive(Clone, Debug)]
 pub struct TorConfig {
