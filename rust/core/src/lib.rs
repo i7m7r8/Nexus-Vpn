@@ -1,3 +1,4 @@
+use anyhow::Error;
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
 use arti_client::TorClientConfig;
@@ -678,7 +679,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let circuit = self.tor_client.build_circuit().await?;
+        let _circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -788,9 +789,13 @@ pub struct TorManager {
 }
 
 impl TorManager {
-    pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
-        let runtime = TokioRustlsRuntime::create()?;
-        let client = ArtiTorClient::create(runtime, config)?;
+        pub async fn start(&mut self, config: TorClientConfig) -> Result<(), anyhow::Error> {
+        let runtime = tor_rtcompat::tokio::TokioRustlsRuntime::create()?;
+        let client = ArtiTorClient::builder()
+            .config(config)
+            .runtime(runtime)
+            .build()
+            .await?;
         let client = client.bootstrap().await?;
         self.client = Some(Arc::new(client));
         Ok(())
@@ -1803,7 +1808,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let circuit = self.tor_client.build_circuit().await?;
+            let _circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
