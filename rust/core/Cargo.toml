@@ -38,3 +38,6 @@ criterion = "0.5"
 
 # Add bundled sqlite3 for Android cross-compilation
 libsqlite3-sys = { version = "0.36", features = ["bundled"] }
+
+# Force sqlite3 to be built from source for Android cross-compilation
+rusqlite = { version = "0.38", features = ["bundled"] }
