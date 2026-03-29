@@ -795,10 +795,31 @@ impl VpnEngine {
                 tls_version: TlsVersion::V1_3,
                 custom_user_agent: None,
                 fingerprint_resistant: true,
-            /// Start the Tor client if it's not already running.
-        if self.tor_manager.get_client().is_none() {
-            self.tor_manager.start(config).await?;
-        
+            })),
+            tor_config: Arc::new(RwLock::new(TorConfig {
+                enabled: false,
+                bridge_enabled: false,
+                bridges: vec![],
+                guard_node: None,
+                exit_node: None,
+                circuit_build_timeout_secs: 10,
+                connection_timeout_secs: 30,
+                auto_rotation: true,
+            })),
+            connection_logs: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
+            stats_history: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
+            kill_switch_enabled: Arc::new(Mutex::new(true)),
+            auto_reconnect: Arc::new(Mutex::new(true)),
+            background_task: Arc::new(Mutex::new(None)),
+            dns_cache: Arc::new(RwLock::new(HashMap::new())),
+            ipv6_leakage_prevention: Arc::new(Mutex::new(true)),
+            tor_manager: TorManager::default(),
+            sni_enabled: false,
+            custom_sni_hostname: String::new(),
+            tor_enabled: false,
+        }
+    }
+
     pub fn set_sni_config(&mut self, sni_enabled: bool, custom_sni: String, tor_enabled: bool) {
         self.sni_enabled = sni_enabled;
         self.custom_sni_hostname = custom_sni;
@@ -808,7 +829,23 @@ impl VpnEngine {
             let mut tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 let _ = tor_manager.start(config).await;
-            
+            });
+        } else if !tor_enabled && self.tor_manager.get_client().is_some() {
+            let mut tor_manager = self.tor_manager.clone();
+            tokio::spawn(async move {
+                tor_manager.stop().await;
+            });
+        }
+    }
+
+    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
+        self.tor_manager.start(config).await
+    }
+
+    pub async fn stop_tor(&mut self) {
+        self.tor_manager.stop().await
+    }
+
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, anyhow::Error> {
         if let Some(tor_client) = self.tor_manager.get_client() {
             let stream = tor_client.connect((addr, port)).await?;
@@ -818,23 +855,7 @@ impl VpnEngine {
             Ok(stream)
         }
     }
-
-});
-        } else if !tor_enabled && self.tor_manager.get_client().is_some() {
-            let mut tor_manager = self.tor_manager.clone();
-            tokio::spawn(async move {
-                tor_manager.stop().await;
-            });
-        }
-    }
-
-        self.tor_manager.start(config).await
-    }
-
-
 }
-        Ok(())
-    }
 
     /// Stop the Tor client.
 
