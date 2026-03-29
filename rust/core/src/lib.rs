@@ -1275,12 +1275,11 @@ impl VpnEngine {
                 tor_manager.stop().await;
             });
         }
-    }
+    
 
     pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
         self.tor_manager.start(config).await
-    }
+    
 
     pub async fn stop_tor(&mut self) {
         self.tor_manager.stop().await
-}
