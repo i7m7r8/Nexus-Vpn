@@ -15,6 +15,7 @@ use tokio::sync::{Mutex, RwLock};
 use std::time::Duration;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::time::sleep;
+use tor_rtcompat::PreferredRuntime;
 use chacha20poly1305::KeyInit;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -151,8 +152,8 @@ pub struct TorClientConfig {
     pub auto_rotation: bool,
 }
 impl TorClientConfig {
-    pub fn to_arti(&self) -> arti_client::config::ConfigParts {
-        arti_client::config::ConfigParts::default()
+    pub fn to_arti(&self) -> arti_client::config::Config {
+        arti_client::config::Config::default()
     }
 }
 
@@ -806,13 +807,14 @@ impl VpnConnection {
 
 /// Manages the Arti Tor client lifecycle.
 #[derive(Clone)]pub struct TorManager {
-    client: Option<std::sync::Arc<tokio::sync::Mutex<arti_client::TorClient<arti_client::config::TorClientConfig>>>>,
+    client: Option<std::sync::Arc<tokio::sync::Mutex<arti_client::TorClient<tor_rtcompat::PreferredRuntime>>>>,
 }
 
 impl TorManager {
     pub async fn start(&mut self, config: TorClientConfig) -> Result<(), String> {
         
         let client = arti_client::TorClient::builder()
+            .with_config(arti_config)
             .create_bootstrapped()
             .await
             .map_err(|e| format!("Arti bootstrap failed: {}", e))?;
