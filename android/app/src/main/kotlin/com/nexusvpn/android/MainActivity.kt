@@ -29,7 +29,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,7 +44,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.nexusvpn.android.service.NexusVpnService
 import com.nexusvpn.android.service.NexusVpnService
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -452,9 +450,9 @@ fun HomeScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            StatCard("Speed", connectionSpeed, modifier = Modifier.weight(1f))
-            StatCard("Latency", connectionLatency, modifier = Modifier.weight(1f))
-            StatCard("Data Used", dataUsed, modifier = Modifier.weight(1f))
+            StatCard("Speed", connectionSpeed)
+            StatCard("Latency", connectionLatency)
+            StatCard("Data Used", dataUsed)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
