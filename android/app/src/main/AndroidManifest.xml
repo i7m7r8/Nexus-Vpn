@@ -1,81 +1,117 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nexusvpn.android">
 
-    <!-- NETWORK PERMISSIONS -->
+    <!-- ============ CORE NETWORK PERMISSIONS ============ -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BIND_NETWORK_SERVICE" />
+    <uses-permission android:name="android.permission.REQUEST_NETWORK" />
 
-    <!-- VPN CORE -->
+    <!-- ============ VPN SERVICE PERMISSIONS ============ -->
     <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.DEVICE_POWER" />
+
+    <!-- ============ FOREGROUND SERVICE PERMISSIONS (Android 12+) ============ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
 
-    <!-- LOCATION (for server geo-lookup) -->
+    <!-- ============ SPLIT TUNNELING & APP MANAGEMENT ============ -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.GET_PACKAGE_SIZE" />
+    <uses-permission android:name="android.permission.GET_TASKS" />
+
+    <!-- ============ LOCATION SERVICES ============ -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- SPLIT TUNNELING -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-
-    <!-- BOOT & SYSTEM -->
+    <!-- ============ SYSTEM & BOOT PERMISSIONS ============ -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_LOGS" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 
-    <!-- OPTIONAL -->
+    <!-- ============ STORAGE (Scoped Storage Compliant) ============ -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!-- ============ USER NOTIFICATIONS ============ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ============ HARDWARE FEATURES ============ -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <uses-feature android:name="android.software.device_admin" android:required="false" />
 
     <application
         android:allowBackup="false"
         android:label="@string/app_name"
         android:theme="@style/Theme.NexusVPN"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:debuggable="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
 
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.NexusVPN">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- Primary VPN Service (Always-On Foreground) -->
         <service
             android:name=".service.NexusVpnService"
             android:exported="true"
-            android:foregroundServiceType="connectedDevice"
-            android:permission="android.permission.BIND_VPN_SERVICE">
+            android:foregroundServiceType="connectedDevice|systemExempted"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:process=":vpn_service">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
 
+        <!-- VPN Monitoring Service (Stats & Reconnection) -->
         <service
             android:name=".service.VpnMonitoringService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice"
+            android:process=":vpn_monitor" />
 
+        <!-- Network State Receiver -->
         <receiver
             android:name=".receiver.NetworkChangeReceiver"
             android:enabled="true"
             android:exported="true">
-            <intent-filter>
+            <intent-filter android:priority="999">
                 <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
                 <action android:name="android.net.wifi.STATE_CHANGE" />
+                <action android:name="android.net.wifi.WIFI_STATE_CHANGED" />
+                <action android:name="android.net.conn.INET_CONDITION_ACTION" />
             </intent-filter>
         </receiver>
 
+        <!-- Boot Completion Receiver (Auto-Start VPN) -->
         <receiver
             android:name=".receiver.BootCompleteReceiver"
             android:exported="true"
             android:enabled="true">
-            <intent-filter>
+            <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
 
