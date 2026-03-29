@@ -22,7 +22,6 @@ log = "0.4"
 anyhow = "1.0"
 
 # Arti with rustls (no openssl dependency)
-arti-client = { version = "0.40.0", default-features = false, features = ["rustls", "tokio"] }
 
 # Added missing dependencies
 chrono = "0.4"
@@ -37,7 +36,5 @@ ndk-glue = "0.7"
 criterion = "0.5"
 
 # Add bundled sqlite3 for Android cross-compilation
-libsqlite3-sys = { version = "0.36", features = ["bundled"] }
 
 # Force sqlite3 to be built from source for Android cross-compilation
-rusqlite = { version = "0.38", features = ["bundled"] }
