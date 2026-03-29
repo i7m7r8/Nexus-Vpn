@@ -852,10 +852,7 @@ impl VpnEngine {
             let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(Box::new(stream))
         }
-    } else {
-            let stream = tokio::net::TcpStream::connect((addr, port)).await?;
-            Ok(stream)
-        }
+    }
     }
 }
 
