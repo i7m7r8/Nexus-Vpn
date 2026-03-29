@@ -1,4 +1,6 @@
 use tokio::io::AsyncWriteExt;
+use aes_gcm::aead::Aead;
+use chacha20poly1305::aead::Aead;
 use arti_client::TorClientConfig;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use arti_client::TorClient as ArtiTorClient;
@@ -624,7 +626,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let _circuit = self.tor_client.build_circuit().await?;
+        let circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -1612,7 +1614,7 @@ impl NexusVpnEngine {
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock};
 use std::time::Duration;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use tokio::time::sleep;
@@ -1749,7 +1751,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let _circuit = self.tor_client.build_circuit().await?;
+            let circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
