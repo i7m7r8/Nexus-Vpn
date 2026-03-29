@@ -748,7 +748,7 @@ fun StatsScreen(
 // ============================================================================
 
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier.weight(1f)) {
     Card(
         modifier = modifier
             .weight(1f)
