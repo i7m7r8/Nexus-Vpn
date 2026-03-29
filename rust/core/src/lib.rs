@@ -170,8 +170,7 @@ pub struct TorConfig {
     pub auto_rotation: bool,
 }
 
-#[derive(Clone, Debug)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct VpnConnectionStats {
     pub bytes_sent: u64,
     pub bytes_received: u64,
