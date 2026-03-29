@@ -1,4 +1,3 @@
-use arti_client::TorClient;
 use arti_client::TorClientConfig;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust)
@@ -413,14 +412,14 @@ impl SniHandler {
 // ======================== TOR CLIENT INTEGRATION ===========================
 // ============================================================================
 
-pub struct ArtiTorClient {
+pub struct TorClient {
     config: TorConfig,
     bridges: Arc<Mutex<VecDeque<String>>>,
     current_circuit: Arc<Mutex<Option<String>>>,
     connection_count: Arc<Mutex<u64>>,
 }
 
-impl ArtiTorClient {
+impl TorClient {
     pub fn new(config: TorConfig) -> Self {
         let bridges = Arc::new(Mutex::new(
             config.bridges.iter().cloned().collect()
@@ -515,7 +514,7 @@ pub struct VpnConnection {
     stats: Arc<Mutex<VpnConnectionStats>>,
     encryption: Arc<EncryptionEngine>,
     sni_handler: Arc<SniHandler>,
-    tor_client: Arc<ArtiTorClient>,
+    tor_client: Arc<TorClient>,
     packet_buffer: Arc<Mutex<VecDeque<Vec<u8>>>>,
     connection_logs: Arc<Mutex<VecDeque<ConnectionLog>>>,
 }
@@ -536,7 +535,7 @@ impl VpnConnection {
         protocol: VpnProtocol,
         encryption: Arc<EncryptionEngine>,
         sni_handler: Arc<SniHandler>,
-        tor_client: Arc<ArtiTorClient>,
+        tor_client: Arc<TorClient>,
     ) -> Self {
         Self {
             server,
@@ -728,14 +727,15 @@ impl VpnConnection {
 
 
 /// Manages the Arti Tor client lifecycle.
+#[derive(Clone)]
 pub struct TorManager {
-    client: Option<Arc<ArtiTorClient>>,
+    client: Option<Arc<TorClient>>,
 }
 
 impl TorManager {
     
-    pub async fn start(&mut self, config: ArtiTorClientConfig) -> Result<(), arti_client::Error> {
-        let client = ArtiArtiTorClient::create(config)?;
+    pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
+        let client = TorClient::create(config)?;
         let client = client.bootstrap().await?;
         self.client = Some(Arc::new(client));
         Ok(())
@@ -748,7 +748,7 @@ impl TorManager {
         }
     }
 
-    pub fn get_client(&self) -> Option<Arc<ArtiTorClient>> {
+    pub fn get_client(&self) -> Option<Arc<TorClient>> {
         self.client.clone()
     }
 }
@@ -795,7 +795,7 @@ impl VpnEngine {
                 custom_user_agent: None,
                 fingerprint_resistant: true,
             /// Start the Tor client if it's not already running.
-    pub async fn start_tor(&mut self, config: ArtiTorClientConfig) -> Result<(), arti_client::Error> {
+    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
         if self.tor_manager.get_client().is_none() {
             self.tor_manager.start(config).await?;
         
@@ -804,7 +804,7 @@ impl VpnEngine {
         self.custom_sni_hostname = custom_sni;
         self.tor_enabled = tor_enabled;
         if tor_enabled && self.tor_manager.get_client().is_none() {
-            let config = ArtiTorClientConfig::default();
+            let config = TorClientConfig::default();
             let tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 let _ = tor_manager.start(config).await;
@@ -828,7 +828,7 @@ impl VpnEngine {
         }
     }
 
-    pub async fn start_tor(&mut self, config: ArtiTorClientConfig) -> Result<(), arti_client::Error> {
+    pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
         self.tor_manager.start(config).await
     }
 
@@ -897,7 +897,7 @@ impl VpnEngine {
         drop(servers);
 
         let sni_handler = Arc::new(SniHandler::new(self.sni_config.read().await.clone()));
-        let tor_client = Arc::new(ArtiTorClient::new(self.tor_config.read().await.clone()));
+        let tor_client = Arc::new(TorClient::new(self.tor_config.read().await.clone()));
 
         let connection = Arc::new(VpnConnection::new(
             server,
@@ -1139,7 +1139,7 @@ use std::sync::Arc;
             auto_rotation: true,
         };
         
-        let client = ArtiTorClient::new(config);
+        let client = TorClient::new(config);
         client.initialize().await.unwrap();
         
         let circuit = client.get_current_circuit().await;
@@ -1185,28 +1185,24 @@ use std::sync::Arc;
 #[no_mangle]
 
 
-#[no_mangle]
-
-use futures::executor::block_on;
 
 use jni::sys::{jlong, jboolean};
 use jni::objects::{JClass, JString};
 use jni::JNIEnv;
 
 use log::error;
-use arti_client::TorClient;
 
 
 
 
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeStartTor(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     engine_ptr: jlong,
 ) {
     let engine = unsafe { &mut *(engine_ptr as *mut VpnEngine) };
-    let config = ArtiTorClientConfig::default();
+    let config = TorClientConfig::default();
     let result = futures::executor::block_on(engine.start_tor(config));
     if let Err(e) = result {
         error!("Failed to start Tor: {}", e);
@@ -1217,7 +1213,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeS
 
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeStopTor(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     engine_ptr: jlong,
 ) {
@@ -1229,7 +1225,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeS
 
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_nativeSetSniConfig(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     engine_ptr: jlong,
     sni_enabled: jboolean,
