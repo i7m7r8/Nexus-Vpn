@@ -7,9 +7,9 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-tokio = { version = "1.44", features = ["full"] }
+tokio = { version = "1.44", features = ["full", "rt-multi-thread"] }
 tokio-util = "0.7"
-rustls = "0.23"
+rustls = { version = "0.23", features = ["ring"] }
 chacha20poly1305 = "0.10"
 aes-gcm = "0.10"
 sha2 = "0.10"
@@ -24,15 +24,21 @@ chrono = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Arti with no persistent state (no sqlite)
+# Arti Tor client (REQUIRED for SNI→Tor chaining)
+arti-client = { version = "0.21", default-features = false, features = ["tokio", "static-sqlite"] }
+tor-rtcompat = "0.21"
+tor-config = "0.21"
 
+# Android-specific deps - SINGLE BLOCK ONLY (fixes duplicate key error)
 [target.'cfg(target_os = "android")'.dependencies]
-ndk = "0.8"
-ndk-glue = "0.7"
+ndk-context = "0.1"
 
 [dev-dependencies]
 criterion = "0.5"
 
-[target.'cfg(target_os = "android")'.dependencies]
-ndk-context = "0.1"
-android_logger = "0.14"
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"
+
