@@ -1,5 +1,4 @@
 use tokio::io::AsyncWriteExt;
-use arti_client::TorClient as ArtiTorClient;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
 // ============================================================================
@@ -739,10 +738,8 @@ pub struct TorManager {
 
 impl TorManager {
 
-    pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
-        let client = ArtiTorClient::<tokio::runtime::Runtime>::create(config)?;
-        let client = client.bootstrap().await?;
-        self.client = Some(Arc::new(client));
+    pub async fn start(&mut self, _config: TorClientConfig) -> Result<(), arti_client::Error> {
+        // Placeholder: arti client not yet integrated
         Ok(())
     }
 
@@ -1096,7 +1093,7 @@ impl SplitTunnelManager {
     }
 
     pub async fn get_config(&self) -> SplitTunnelConfig {
-        self.config.read().await.clone()
+        (*self.config.read().await).clone()
     }
 }
 
@@ -1954,7 +1951,7 @@ impl ConfigManager {
     }
 
     pub async fn get_config(&self) -> AppConfig {
-        self.config.read().await.clone()
+        (*self.config.read().await).clone()
     }
 }
 
