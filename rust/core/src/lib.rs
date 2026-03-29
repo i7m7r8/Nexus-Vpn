@@ -854,7 +854,6 @@ impl VpnEngine {
         }
     }
     }
-}
 
 // ============================================================================
 // ============= CONNECTION POOL MANAGER (Production Grade) =================
@@ -2046,3 +2045,4 @@ mod tests {
             assert_eq!(current, "a.com");
         });
     }
+}
