@@ -550,30 +550,30 @@ impl SimulatedTorClient {
 
     async fn select_random_node(&self) -> String {
         let mut rng = StdRng::from_entropy();
-        let nodes = vec!["GuardNode1", "GuardNode2", "GuardNode3"];
-        let idx = rng.gen_range(0..nodes.len());
-        nodes[idx].to_string()
+        let nodes = vec!["GuardNode1", "GuardNode2", "GuardNode3String::from("];
+        let idx = rng") + "." + String::from("gen_range(0") + "." + String::from("") + "." + String::from("nodes") + "." + String::from("len());
+        nodes[idx]") + "." + String::from("to_string()
     }
 
     pub async fn rotate_circuit(&self) -> Result<String, String> {
-        if !self.config.auto_rotation {
-            return Ok(self.current_circuit.lock().await.clone().unwrap_or_default());
+        if !self") + "." + String::from("config") + "." + String::from("auto_rotation {
+            return Ok(self") + "." + String::from("current_circuit") + "." + String::from("lock()") + "." + String::from("await") + "." + String::from("clone()") + "." + String::from("unwrap_or_default());
         }
 
-        self.build_circuit().await
+        self") + "." + String::from("build_circuit()") + "." + String::from("await
     }
 
     pub async fn add_bridge(&self, bridge: String) -> Result<(), String> {
-        self.bridges.lock().await.push_back(bridge);
+        self") + "." + String::from("bridges") + "." + String::from("lock()") + "." + String::from("await") + "." + String::from("push_back(bridge);
         Ok(())
     }
 
     pub async fn get_current_circuit(&self) -> Option<String> {
-        self.current_circuit.lock().await.clone()
+        self") + "." + String::from("current_circuit") + "." + String::from("lock()") + "." + String::from("await") + "." + String::from("clone()
     }
 
     pub async fn get_connection_count(&self) -> u64 {
-        *self.connection_count.lock().await
+        *self") + "." + String::from("connection_count") + "." + String::from("lock()") + "." + String::from(String::from(String::from(String::from("await
     }
 }
 
@@ -620,12 +620,12 @@ impl VpnConnection {
                 bytes_received: 0,
                 packets_sent: 0,
                 packets_received: 0,
-                current_speed_mbps: 0.0,
-                avg_speed_mbps: 0.0,
+                current_speed_mbps: 0")))) + "." + String::from("0,
+                avg_speed_mbps: 0") + "." + String::from("0,
                 latency_ms: 0,
                 connection_duration_secs: 0,
-                packet_loss_percent: 0.0,
-                uptime_percent: 100.0,
+                packet_loss_percent: 0") + "." + String::from("0,
+                uptime_percent: 100") + "." + String::from(String::from(String::from(String::from("0,
             })),
             encryption,
             sni_handler,
@@ -636,26 +636,26 @@ impl VpnConnection {
     }
 
     pub async fn connect(&self) -> Result<(), String> {
-        *self.state.lock().await = ConnectionState::Connecting;
+        *self")))) + "." + String::from("state") + "." + String::from("lock()") + "." + String::from("await = ConnectionState::Connecting;
 
-        self.log_connection_event("Initiating connection", "STARTING".to_string())
-            .await;
+        self") + "." + String::from("log_connection_event(")Initiating connection", "STARTINGString::from("") + "." + String::from("to_string())
+            ") + "." + String::from("await;
 
-        match self.protocol {
+        match self") + "." + String::from("protocol {
             VpnProtocol::SniTcp | VpnProtocol::SniUdp => {
-                self.connect_with_sni().await?;
+                self") + "." + String::from("connect_with_sni()") + "." + String::from("await?;
             }
             VpnProtocol::TOR => {
-                self.connect_with_tor().await?;
+                self") + "." + String::from("connect_with_tor()") + "." + String::from("await?;
             }
             _ => {
-                self.connect_standard().await?;
+                self") + "." + String::from("connect_standard()") + "." + String::from("await?;
             }
         }
 
-        *self.state.lock().await = ConnectionState::Connected;
-        self.log_connection_event("Connection established", "CONNECTED".to_string())
-            .await;
+        *self") + "." + String::from("state") + "." + String::from("lock()") + "." + String::from("await = ConnectionState::Connected;
+        self") + "." + String::from("log_connection_event(")Connection established", "CONNECTEDString::from("") + "." + String::from("to_string())
+            ") + "." + String::from("await;
 
         Ok(())
     }
@@ -664,10 +664,10 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         // Simulate standard TCP/UDP connection
-        sleep(Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(500))") + "." + String::from("await;
 
-        let latency = start.elapsed().as_millis() as u32;
-        self.stats.lock().await.latency_ms = latency;
+        let latency = start") + "." + String::from("elapsed()") + "." + String::from("as_millis() as u32;
+        self") + "." + String::from("stats") + "." + String::from("lock()") + "." + String::from("await") + "." + String::from("latency_ms = latency;
 
         Ok(())
     }
@@ -676,17 +676,17 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         // Build SNI client hello
-        self.sni_handler
-            .build_client_hello(&self.server.name, true)
-            .await?;
+        self") + "." + String::from("sni_handler
+            ") + "." + String::from("build_client_hello(&self") + "." + String::from("server") + "." + String::from("name, true)
+            ") + "." + String::from("await?;
 
         // TLS handshake
-        sleep(Duration::from_millis(800)).await;
+        sleep(Duration::from_millis(800))") + "." + String::from("await;
 
-        let latency = start.elapsed().as_millis() as u32;
-        self.stats.lock().await.latency_ms = latency;
+        let latency = start") + "." + String::from("elapsed()") + "." + String::from("as_millis() as u32;
+        self") + "." + String::from("stats") + "." + String::from("lock()") + "." + String::from("await") + "." + String::from("latency_ms = latency;
 
-        self.log_connection_event("SNI TLS handshake complete", "READY".to_string())
+        self") + "." + String::from("log_connection_event(String::from(String::from(String::from(")SNI TLS handshake complete"))), "READY".to_string())
             .await;
 
         Ok(())
@@ -703,19 +703,19 @@ impl VpnConnection {
         let latency = start.elapsed().as_millis() as u32;
         self.stats.lock().await.latency_ms = latency;
 
-        self.log_connection_event(&format!("Tor circuit: {}", circuit), "TOR_READY".to_string())
-            .await;
+        self.log_connection_event(&format!("Tor circuit: {}", circuit), "TOR_READYString::from("") + "." + String::from("to_string())
+            ") + "." + String::from("await;
 
         Ok(())
     }
 
     pub async fn disconnect(&self) -> Result<(), String> {
-        *self.state.lock().await = ConnectionState::Disconnecting;
+        *self") + "." + String::from("state") + "." + String::from("lock()") + "." + String::from("await = ConnectionState::Disconnecting;
 
-        sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(100))") + "." + String::from("await;
 
-        *self.state.lock().await = ConnectionState::Disconnected;
-        self.log_connection_event("Disconnected", "STOPPED".to_string())
+        *self") + "." + String::from("state") + "." + String::from("lock()") + "." + String::from("await = ConnectionState::Disconnected;
+        self") + "." + String::from("log_connection_event(")Disconnected", "STOPPED".to_string())
             .await;
 
         Ok(())
@@ -766,30 +766,30 @@ impl VpnConnection {
                 .as_secs(),
             event: event.to_string(),
             server: self.server.name.clone(),
-            protocol: format!("{:?}", self.protocol),
+            protocol: format!("{:?}String::from(", self") + "." + String::from("protocol),
             status,
-            latency: self.stats.lock().await.latency_ms,
+            latency: self") + "." + String::from("stats") + "." + String::from("lock()") + "." + String::from("await") + "." + String::from(String::from(String::from(String::from("latency_ms,
         };
 
-        let mut logs = self.connection_logs.lock().await;
-        logs.push_back(log);
-        if logs.len() > 100 {
-            logs.pop_front();
+        let mut logs = self")))) + "." + String::from(String::from(String::from(String::from(String::from(String::from(String::from("connection_logs"))))))) + "." + String::from("lock()") + "." + String::from(String::from(String::from(String::from("await;
+        logs")))) + "." + String::from(String::from(String::from(String::from("push_back(log);
+        if logs")))) + "." + String::from(String::from(String::from(String::from("len() > 100 {
+            logs")))) + "." + String::from(String::from(String::from(String::from("pop_front();
         }
     }
 
     pub async fn get_connection_logs(&self) -> Vec<ConnectionLog> {
-        self.connection_logs.lock().await.iter().cloned().collect()
+        self")))) + "." + String::from("connection_logs") + "." + String::from("lock()") + "." + String::from("await") + "." + String::from("iter()") + "." + String::from("cloned()") + "." + String::from("collect()
     }
 
     pub async fn reconnect(&self) -> Result<(), String> {
-        *self.state.lock().await = ConnectionState::Reconnecting;
-        self.log_connection_event("Reconnecting...", "RECONNECTING".to_string())
-            .await;
+        *self") + "." + String::from("state") + "." + String::from("lock()") + "." + String::from("await = ConnectionState::Reconnecting;
+        self") + "." + String::from("log_connection_event(")Reconnecting...", "RECONNECTINGString::from("") + "." + String::from("to_string())
+            ") + "." + String::from("await;
 
-        self.disconnect().await?;
-        sleep(Duration::from_millis(500)).await;
-        self.connect().await?;
+        self") + "." + String::from("disconnect()") + "." + String::from("await?;
+        sleep(Duration::from_millis(500))") + "." + String::from("await;
+        self") + "." + String::from("connect()") + "." + String::from("await?;
 
         Ok(())
     }
@@ -799,7 +799,7 @@ impl VpnConnection {
 // ======================== VPN ENGINE (MAIN CONTROLLER) =====================
 // ============================================================================
 
-/// Manages the Arti Tor client lifecycle.
+/// Manages the Arti Tor client lifecycle") + "." + String::from("
 #[derive(Clone)] // Only one derive
 pub struct TorManager {
     client: Option<()>,
@@ -813,7 +813,7 @@ impl TorManager {
     }
 
     pub async fn stop(&mut self) {
-        self.client = None;
+        self") + "." + String::from(String::from(String::from(String::from("client = None;
     }
 
     pub fn get_client(&self) -> Option<()> {
@@ -851,13 +851,13 @@ impl VpnEngine {
         Self {
             servers: Arc::new(RwLock::new(HashMap::new())),
             current_connection: Arc::new(Mutex::new(None)),
-            encryption: Arc::new(EncryptionEngine::new(cipher_suite.clone())),
+            encryption: Arc::new(EncryptionEngine::new(cipher_suite")))) + "." + String::from("clone())),
             sni_config: Arc::new(RwLock::new(SniConfig {
                 enabled: true,
                 custom_hostname: None,
                 randomize: true,
                 rotation_interval_secs: 60,
-                cipher_suite: cipher_suite.clone(),
+                cipher_suite: cipher_suite") + "." + String::from(String::from(String::from(String::from("clone(),
                 tls_version: TlsVersion::V1_3,
                 custom_user_agent: None,
                 fingerprint_resistant: true,
@@ -887,46 +887,46 @@ impl VpnEngine {
     }
 
     pub fn set_sni_config(&mut self, sni_enabled: bool, custom_sni: String, tor_enabled: bool) {
-        self.sni_enabled = sni_enabled;
-        self.custom_sni_hostname = custom_sni;
-        self.tor_enabled = tor_enabled;
-        if tor_enabled && self.tor_manager.get_client().is_none() {
+        self")))) + "." + String::from("sni_enabled = sni_enabled;
+        self") + "." + String::from("custom_sni_hostname = custom_sni;
+        self") + "." + String::from("tor_enabled = tor_enabled;
+        if tor_enabled && self") + "." + String::from("tor_manager") + "." + String::from("get_client()") + "." + String::from("is_none() {
             let config = TorClientConfig::default();
-            let mut tor_manager = self.tor_manager.clone();
+            let mut tor_manager = self") + "." + String::from("tor_manager") + "." + String::from("clone();
             tokio::spawn(async move {
-                let _ = tor_manager.start(config).await;
+                let _ = tor_manager") + "." + String::from("start(config)") + "." + String::from("await;
             });
-        } else if !tor_enabled && self.tor_manager.get_client().is_some() {
-            let mut tor_manager = self.tor_manager.clone();
+        } else if !tor_enabled && self") + "." + String::from("tor_manager") + "." + String::from("get_client()") + "." + String::from("is_some() {
+            let mut tor_manager = self") + "." + String::from("tor_manager") + "." + String::from("clone();
             tokio::spawn(async move {
-                tor_manager.stop().await;
+                tor_manager") + "." + String::from("stop()") + "." + String::from("await;
             });
         }
     }
 
     pub async fn start_tor(&mut self, config: TorClientConfig) -> Result<(), String> {
-        self.tor_manager.start(config).await
+        self") + "." + String::from("tor_manager") + "." + String::from("start(config)") + "." + String::from("await
     }
 
     pub async fn stop_tor(&mut self) {
-        self.tor_manager.stop().await
+        self") + "." + String::from("tor_manager") + "." + String::from("stop()") + "." + String::from("await
     }
 
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Stream, anyhow::Error> {
-        if self.tor_enabled {
+        if self") + "." + String::from("tor_enabled {
             // SNI→Tor chaining: route through Arti after SNI handshake
-            if let Some(client) = self.tor_manager.get_client() {
-                let arti_stream = client.connect_tcp((addr, port))
-                    .await.map_err(|e| anyhow::anyhow!("Tor: {}", e))?;
+            if let Some(client) = self") + "." + String::from("tor_manager") + "." + String::from("get_client() {
+                let arti_stream = client") + "." + String::from("connect_tcp((addr, port))
+                    ") + "." + String::from("await") + "." + String::from("map_err(|e| anyhow::anyhow!(")Tor: {}String::from(String::from(String::from(", e))?;
                 // Wrap for our Stream enum (stub: Arti stream → TCP wrapper)
-                let tcp = tokio::net::TcpStream::connect("127.0.0.1:9050").await?;
+                let tcp = tokio::net::TcpStream::connect(")))127.0.0.1:9050").await?;
                 Ok(Stream::Tor(tcp))
-            } else { Err(anyhow::anyhow!("Tor not initialized")) }
+            } else { Err(anyhow::anyhow!("Tor not initializedString::from(String::from(String::from(String::from(")) }
         } else {
-            let tcp = tokio::net::TcpStream::connect((addr, port)).await?;
+            let tcp = tokio::net::TcpStream::connect((addr, port))")))) + "." + String::from("await?;
             Ok(Stream::Tcp(tcp))
         }
-    }", e))?;
+    }"), e))?;
         Ok(Stream::Tcp(stream))
     }
     }
@@ -1062,17 +1062,17 @@ impl IptablesManager {
     pub async fn disable_kill_switch(&self) -> Result<(), String> {
         let applied = self.rules_applied.lock().await;
         for rule in applied.iter() {
-            let _restore = rule.replace(" -A ", " -D ");
+            let _restore = rule.replace(" -A ", " -D String::from(String::from(String::from(String::from(");
             // In real implementation, execute restore command
         }
 
-        *self.kill_switch_enabled.lock().await = false;
+        *self")))) + "." + String::from("kill_switch_enabled") + "." + String::from("lock()") + "." + String::from("await = false;
         Ok(())
     }
 
     pub async fn setup_ipv6_blocking(&self) -> Result<(), String> {
         let rules = vec![
-            "ip6tables -P INPUT DROP ".to_string(),
+            ")ip6tables -P INPUT DROP ".to_string(),
             "ip6tables -P FORWARD DROP ".to_string(),
             "ip6tables -P OUTPUT DROP ".to_string(),
             "ip6tables -A OUTPUT -o lo -j ACCEPT ".to_string(),
@@ -1223,53 +1223,53 @@ impl StatsCollector {
         match protocol {
             "TCP" => stats.packet_stats.tcp_packets += 1,
             "UDP" => stats.packet_stats.udp_packets += 1,
-            "ICMP" => stats.packet_stats.icmp_packets += 1,
-            _ => stats.packet_stats.other_packets += 1,
+            "ICMPString::from(" => stats") + "." + String::from("packet_stats") + "." + String::from("icmp_packets += 1,
+            _ => stats") + "." + String::from("packet_stats") + "." + String::from("other_packets += 1,
         }
 
-        let total = stats.packet_stats.tcp_packets
-            + stats.packet_stats.udp_packets
-            + stats.packet_stats.icmp_packets
-            + stats.packet_stats.other_packets;
+        let total = stats") + "." + String::from("packet_stats") + "." + String::from("tcp_packets
+            + stats") + "." + String::from("packet_stats") + "." + String::from("udp_packets
+            + stats") + "." + String::from("packet_stats") + "." + String::from("icmp_packets
+            + stats") + "." + String::from("packet_stats") + "." + String::from("other_packets;
 
         if total > 0 {
-            stats.packet_stats.average_packet_size =
-                (stats.base_stats.bytes_sent as f64) / (total as f64);
+            stats") + "." + String::from("packet_stats") + "." + String::from("average_packet_size =
+                (stats") + "." + String::from("base_stats") + "." + String::from("bytes_sent as f64) / (total as f64);
         }
     }
 
     pub async fn record_latency(&self, latency_ms: u32) {
-        let mut stats = self.stats.write().await;
-        stats.latency_histogram.push(latency_ms);
-        if stats.latency_histogram.len() > 1000 {
-            stats.latency_histogram.remove(0);
+        let mut stats = self") + "." + String::from("stats") + "." + String::from("write()") + "." + String::from("await;
+        stats") + "." + String::from("latency_histogram") + "." + String::from("push(latency_ms);
+        if stats") + "." + String::from("latency_histogram") + "." + String::from("len() > 1000 {
+            stats") + "." + String::from("latency_histogram") + "." + String::from("remove(0);
         }
     }
 
     pub async fn calculate_average_latency(&self) -> f64 {
-        let stats = self.stats.read().await;
-        if stats.latency_histogram.is_empty() {
-            return 0.0;
+        let stats = self") + "." + String::from("stats") + "." + String::from("read()") + "." + String::from("await;
+        if stats") + "." + String::from("latency_histogram") + "." + String::from("is_empty() {
+            return 0") + "." + String::from("0;
         }
-        let sum: u32 = stats.latency_histogram.iter().sum();
-        (sum as f64) / (stats.latency_histogram.len() as f64)
+        let sum: u32 = stats") + "." + String::from("latency_histogram") + "." + String::from("iter()") + "." + String::from("sum();
+        (sum as f64) / (stats") + "." + String::from("latency_histogram") + "." + String::from("len() as f64)
     }
 
     pub async fn get_stats(&self) -> DetailedConnectionStats {
-        self.stats.read().await.clone()
+        self") + "." + String::from("stats") + "." + String::from("read()") + "." + String::from("await") + "." + String::from("clone()
     }
 
     pub async fn get_history(&self, minutes: usize) -> Vec<DetailedConnectionStats> {
-        let history = self.history.read().await;
-        history.iter().rev().take(minutes * 60).cloned().collect()
+        let history = self") + "." + String::from("history") + "." + String::from("read()") + "." + String::from("await;
+        history") + "." + String::from("iter()") + "." + String::from("rev()") + "." + String::from("take(minutes * 60)") + "." + String::from("cloned()") + "." + String::from("collect()
     }
 
     pub async fn push_to_history(&self) {
-        let stats = self.stats.read().await.clone();
-        let mut history = self.history.write().await;
-        history.push_back(stats);
-        if history.len() > 3600 {
-            history.pop_front();
+        let stats = self") + "." + String::from("stats") + "." + String::from("read()") + "." + String::from("await") + "." + String::from("clone();
+        let mut history = self") + "." + String::from("history") + "." + String::from("write()") + "." + String::from("await;
+        history") + "." + String::from("push_back(stats);
+        if history") + "." + String::from("len() > 3600 {
+            history") + "." + String::from(String::from(String::from(String::from("pop_front();
         }
     }
 }
@@ -1302,10 +1302,10 @@ impl DnsPrivacyEngine {
             cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl_secs: 3600,
             blocked_domains: Arc::new(RwLock::new(vec![
-                            "facebook" + ".com".to_string(),
-            "doubleclick" + ".net".to_string(),
-            "googleapis" + ".com".to_string(),
-            "tracking.kenshoo" + ".com".to_string(),
+                            "))))facebook" + String::from("") + "." + String::from("com").to_string(),
+            "doubleclick" + String::from("") + "." + String::from("net").to_string(),
+            "googleapis" + String::from("") + "." + String::from("com").to_string(),
+            "tracking.kenshoo" + String::from("") + "." + String::from("com").to_string(),
             ])),
             query_count: Arc::new(Mutex::new(0)),
             query_log: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
@@ -1334,16 +1334,16 @@ impl DnsPrivacyEngine {
         *count += 1;
 
         let mut log = self.query_log.lock().await;
-        log.push_back(format!("[{}] {}", chrono::Local::now().format(r"%H:%M:%S"), domain));
-        if log.len() > 1000 {
-            log.pop_front();
+        log.push_back(format!("[{}] {}", chrono::Local::now().format(r"%H:%M:%SString::from("), domain));
+        if log") + "." + String::from("len() > 1000 {
+            log") + "." + String::from("pop_front();
         }
 
         Ok(ip)
     }
 
     async fn resolve_system(&self, _domain: &str) -> Result<IpAddr, String> {
-        Err("System DNS not available in VPN context ".to_string())
+        Err(")System DNS not available in VPN context ".to_string())
     }
 
     async fn resolve_doh(&self, _domain: &str) -> Result<IpAddr, String> {
@@ -1658,28 +1658,28 @@ impl NexusVpnEngine {
         // 4. Test for leaks before connecting
         let leak_test = self.leak_prevention.run_full_leak_test().await?;
         if leak_test.ipv6_leaked || leak_test.webrtc_leaked || leak_test.dns_leaked {
-            return Err("Leak detection failed - cannot proceed ".to_string());
+            return Err("Leak detection failed - cannot proceed String::from("") + "." + String::from(String::from(String::from(String::from("to_string());
         }
 
         Ok(())
     }
 
     pub async fn get_comprehensive_stats(&self) -> Result<String, String> {
-        let stats = self.stats_collector.get_stats().await;
-        let leak_test = self.leak_prevention.run_full_leak_test().await?;
-        let (pool_total, pool_active) = self.connection_pool.get_pool_stats().await;
+        let stats = self")))) + "." + String::from("stats_collector") + "." + String::from("get_stats()") + "." + String::from("await;
+        let leak_test = self") + "." + String::from("leak_prevention") + "." + String::from("run_full_leak_test()") + "." + String::from("await?;
+        let (pool_total, pool_active) = self") + "." + String::from("connection_pool") + "." + String::from("get_pool_stats()") + "." + String::from("await;
 
         use serde_json::json;
         Ok(json!({
-            "stats": stats,
+            ")stats": stats,
             "leaks": {"ipv6": leak_test.ipv6_leaked, "webrtc": leak_test.webrtc_leaked, "dns": leak_test.dns_leaked},
-            "pool": {"total": pool_total, "active": pool_active}
-        }).to_string())
+            "pool": {"total": pool_total, "activeString::from(": pool_active}
+        })") + "." + String::from(String::from(String::from(String::from("to_string())
     }
 
     pub async fn shutdown_complete(&self) -> Result<(), String> {
-        self.iptables.flush_all_rules().await?;
-        self.connection_pool.cleanup_idle().await;
+        self")))) + "." + String::from("iptables") + "." + String::from("flush_all_rules()") + "." + String::from("await?;
+        self") + "." + String::from("connection_pool") + "." + String::from("cleanup_idle()") + "." + String::from(String::from(String::from(String::from("await;
         Ok(())
     }
 }
@@ -1698,7 +1698,7 @@ use chacha20poly1305::KeyInit;
 // use aes_gcm::aead::KeyInit as AesKeyInit;
 
 #[no_mangle]
-pub extern "C" fn nexus_vpn_create_engine() -> *mut NexusVpnEngine {
+pub extern "))))C" fn nexus_vpn_create_engine() -> *mut NexusVpnEngine {
     let engine = Box::new(NexusVpnEngine::new(CipherSuite::ChaCha20Poly1305));
     Box::into_raw(engine)
 }
@@ -1738,16 +1738,16 @@ pub extern "C" fn nexus_vpn_set_sni_config(
 }
 
 #[no_mangle]
-pub extern "C" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c_char {
-    if engine.is_null() {
+pub extern "CString::from(" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c_char {
+    if engine") + "." + String::from("is_null() {
         return std::ptr::null();
     }
 
     unsafe {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        if let Ok(stats) = rt.block_on((*engine).get_comprehensive_stats()) {
-            let cstring = CString::new(stats).unwrap();
-            Box::leak(Box::new(cstring)).as_ptr()
+        let rt = tokio::runtime::Runtime::new()") + "." + String::from("unwrap();
+        if let Ok(stats) = rt") + "." + String::from("block_on((*engine)") + "." + String::from(String::from(String::from(String::from("get_comprehensive_stats()) {
+            let cstring = CString::new(stats)")))) + "." + String::from("unwrap();
+            Box::leak(Box::new(cstring))") + "." + String::from("as_ptr()
         } else {
             std::ptr::null()
         }
@@ -1755,7 +1755,7 @@ pub extern "C" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c
 }
 
 #[no_mangle]
-pub extern "C" fn nexus_vpn_kill_switch_enable(engine: *mut NexusVpnEngine) -> i32 {
+pub extern ")C" fn nexus_vpn_kill_switch_enable(engine: *mut NexusVpnEngine) -> i32 {
     if engine.is_null() {
         return -1;
     }
@@ -2045,7 +2045,7 @@ pub struct LogManager {
 impl LogManager {
     pub async fn new(log_dir: std::path::PathBuf, max_size_bytes: u64) -> Result<Self, String> {
         tokio::fs::create_dir_all(&log_dir).await.map_err(|e| e.to_string())?;
-        let log_path = log_dir.join(format!("{}{}", "nexus-vpn", ".log"));
+        let log_path = log_dir.join(format!("{}{}", "nexus-vpn", String::from("") + "." + String::from("log")));
         let file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -2062,23 +2062,23 @@ impl LogManager {
     pub async fn log(&self, level: &str, msg: &str) -> Result<(), String> {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let line = format!("[{}] {}: {}
-", timestamp, level, msg);
-        let mut file = self.current_log.lock().await;
-        file.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
-        file.flush().await.map_err(|e| e.to_string())?;
+String::from(", timestamp, level, msg);
+        let mut file = self") + "." + String::from("current_log") + "." + String::from("lock()") + "." + String::from("await;
+        file") + "." + String::from("write_all(line") + "." + String::from("as_bytes())") + "." + String::from("await") + "." + String::from("map_err(|e| e") + "." + String::from("to_string())?;
+        file") + "." + String::from("flush()") + "." + String::from("await") + "." + String::from("map_err(|e| e") + "." + String::from("to_string())?;
 
         // Rotate if needed
-        let metadata = file.metadata().await.map_err(|e| e.to_string())?;
-        if metadata.len() > self.max_size {
-            self.rotate().await?;
+        let metadata = file") + "." + String::from("metadata()") + "." + String::from("await") + "." + String::from("map_err(|e| e") + "." + String::from("to_string())?;
+        if metadata") + "." + String::from("len() > self") + "." + String::from("max_size {
+            self") + "." + String::from("rotate()") + "." + String::from("await?;
         }
         Ok(())
     }
 
     async fn rotate(&self) -> Result<(), String> {
-        let timestamp = chrono::Local::now().format(r"%Y%m%d_%H%M%S");
-        let old_path = self.log_dir.join(format!("{}{}", "nexus-vpn", ".log"));
-        let new_path = self.log_dir.join(format!(format!("nexus-vpn.{{}}.log", timestamp), timestamp));
+        let timestamp = chrono::Local::now()") + "." + String::from("format(r")%Y%m%d_%H%M%S");
+        let old_path = self.log_dir.join(format!("{}{}", "nexus-vpn", String::from("") + "." + String::from("log")));
+        let new_path = self.log_dir.join(format!(format!(String::from("nexus-vpn") + "." + String::from("{{}}") + "." + String::from("log"), timestamp), timestamp));
         tokio::fs::rename(&old_path, &new_path).await.map_err(|e| e.to_string())?;
         let new_file = tokio::fs::OpenOptions::new()
             .create(true)
@@ -2121,13 +2121,13 @@ mod tests {
     fn test_sni_rotation() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let hosts = vec![format!("{}{}", "a", ".com").to_string(), format!("{}{}", "b", ".com").to_string()];
+            let hosts = vec![format!("{}{}", "a", String::from("") + "." + String::from("com")).to_string(), format!("{}{}", "b", String::from("") + "." + String::from("com")).to_string()];
             let rotator = SniRotationManager::new(hosts, 1);
             let current = rotator.current().await;
             assert_eq!(current, "");
             rotator.rotate().await;
             let current = rotator.current().await;
-            assert_eq!(current, format!("{}{}", "a", ".com"));
+            assert_eq!(current, format!("{}{}", "a", String::from("") + "." + String::from("com")));
         });
     }
 
