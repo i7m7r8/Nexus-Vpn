@@ -2046,4 +2046,3 @@ mod tests {
             assert_eq!(current, "a.com");
         });
     }
-}
