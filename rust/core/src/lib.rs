@@ -1,9 +1,9 @@
 
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
-// use arti_client::TorClient; // removed: unused
-// tor_rtcompat::PreferredRuntime removed (feature-gated, unused)
-// tor_config::Config alias removed (conflicts with local TorConfig struct)
+use arti_client::TorClient;
+use tor_rtcompat::PreferredRuntime;
+use tor_config::Config as TorConfig;
 
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
@@ -153,8 +153,8 @@ pub struct TorClientConfig {
     pub auto_rotation: bool,
 }
 impl TorClientConfig {
-    pub fn to_arti(&self) -> String {
-        String::from("tor_config_stub")
+    pub fn to_arti(&self) -> tor_config::Config {
+        tor_config::Config::default()
     }
 }
 
@@ -922,12 +922,17 @@ impl VpnEngine {
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Stream, anyhow::Error> {
         if self.tor_enabled {
             // SNI→Tor chaining: route through Arti after SNI handshake
-            if let Some(_client) = self.tor_manager.get_client() {
-                // Route through Tor SOCKS5 proxy on 127.0.0.1:9050
-                let tcp = tokio::net::TcpStream::connect("127.0.0.1:9050").await
-                    .map_err(|e| anyhow::anyhow!("Tor SOCKS5: {}", e))?;
-                Ok(Stream::Tor(tcp))
-            } else { Err(anyhow::anyhow!("Tor not initialized")) }
+            if let Some(client_arc) = self.tor_manager.get_client() {
+                let client = client_arc.lock().await;
+                // Arti handles the Tor circuit internally                let arti_stream = client
+                    .connect_tcp((addr, port))
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Arti connect_tcp: {}", e))?;
+                drop(client);
+                Ok(Stream::Tor(arti_stream))
+            } else {
+                Err(anyhow::anyhow!("Tor not initialized"))
+            }
         } else {
             let tcp = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(Stream::Tcp(tcp))
