@@ -66,7 +66,7 @@ pub struct VpnServer {
 pub struct SniConfig {
     pub enabled: bool,
     pub custom_hostname: Option<String>,
-    pub _randomize: bool,
+    pub randomize: bool,
     pub rotation_interval_secs: u64,
     pub cipher_suite: CipherSuite,
     pub tls_version: TlsVersion,
@@ -627,7 +627,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let _circuit = self.tor_client.build_circuit().await?;
+        let circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -1747,7 +1747,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let _circuit = self.tor_client.build_circuit().await?;
+            let circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
@@ -1887,7 +1887,7 @@ impl BandwidthController {
 }
 
 // ConfigManager for encrypted persistence
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub sni_enabled: bool,
     pub custom_sni: Option<String>,
