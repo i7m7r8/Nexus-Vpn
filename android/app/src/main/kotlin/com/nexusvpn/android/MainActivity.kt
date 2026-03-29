@@ -745,9 +745,10 @@ fun StatsScreen(
 // ============================================================================
 
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier, modifier = Modifier.weight(1f)) {
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier
+            .weight(1f)
             .padding(4.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
@@ -763,11 +764,13 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, modifi
         }
     }
 }
+    }
+}
 
 @Composable
-fun LargeStatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector)) {
+fun LargeStatCard(label: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(8.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
