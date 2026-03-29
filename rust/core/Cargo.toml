@@ -34,3 +34,7 @@ ndk-glue = "0.7"
 
 [dev-dependencies]
 criterion = "0.5"
+
+rusqlite = { version = "0.38", features = ["bundled"] }
+
+libsqlite3-sys = { version = "0.36", features = ["bundled"] }
