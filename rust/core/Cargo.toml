@@ -36,7 +36,7 @@ criterion = "0.5"
 
 
 
-arti-client = { version = "0.40.0", default-features = false, features = ["rustls", "tokio"], optional = false }
 
 [patch.crates-io]
-rusqlite = { git = "https://github.com/rusqlite/rusqlite", rev = "main", optional = true, features = ["bundled"] }
+
+arti-client = { version = "0.40.0", default-features = false, features = ["rustls", "tokio"] }
