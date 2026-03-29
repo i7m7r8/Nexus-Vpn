@@ -3,6 +3,7 @@
 // Feature-Complete Android App with SNI + Tor + Real-Time Stats
 // ============================================================================
 
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.nexusvpn.android
 
 import android.Manifest
@@ -27,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.nexusvpn.android.service.NexusVpnService
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -447,9 +450,9 @@ fun HomeScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            StatCard("Speed", connectionSpeed)
-            StatCard("Latency", connectionLatency)
-            StatCard("Data Used", dataUsed)
+            StatCard("Speed", connectionSpeed, modifier = Modifier.weight(1f))
+            StatCard("Latency", connectionLatency, modifier = Modifier.weight(1f))
+            StatCard("Data Used", dataUsed, modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -712,10 +715,10 @@ fun StatsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        LargeStatCard("Download Speed", connectionSpeed, Icons.Default.Download)
-        LargeStatCard("Latency", connectionLatency, Icons.Default.Speed)
-        LargeStatCard("Data Used", dataUsed, Icons.Default.DataUsage)
-        LargeStatCard("Connection Time", connectionTime, Icons.Default.Timer)
+        LargeStatCard("Download Speed", connectionSpeed, Icons.Default.Download, modifier = Modifier.weight(1f))
+        LargeStatCard("Latency", connectionLatency, Icons.Default.Speed, modifier = Modifier.weight(1f))
+        LargeStatCard("Data Used", dataUsed, Icons.Default.DataUsage, modifier = Modifier.weight(1f))
+        LargeStatCard("Connection Time", connectionTime, Icons.Default.Timer, modifier = Modifier.weight(1f))
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -742,10 +745,9 @@ fun StatsScreen(
 // ============================================================================
 
 @Composable
-fun StatCard(label: String, value: String) {
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier, modifier = Modifier.weight(1f)) {
     Card(
-        modifier = Modifier
-            .weight(1f)
+        modifier = modifier
             .padding(4.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
@@ -763,7 +765,7 @@ fun StatCard(label: String, value: String) {
 }
 
 @Composable
-fun LargeStatCard(label: String, value: String, icon: androidx.compose.material.icons.materialIcon) {
+fun LargeStatCard(label: String, value: String, icon: ImageVector, modifier = Modifier.weight(1f)) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -900,7 +902,6 @@ fun SNIEditorDialog(
 @Composable
 fun BottomNavigationBar(currentScreen: String, onScreenChange: (String) -> Unit) {
     NavigationBar(
-        modifier = Modifier.align(Alignment.BottomCenter),
         containerColor = DarkSurface
     ) {
         NavigationBarItem(
