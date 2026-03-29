@@ -1283,5 +1283,4 @@ impl VpnEngine {
 
     pub async fn stop_tor(&mut self) {
         self.tor_manager.stop().await
-    }
 }
