@@ -417,14 +417,14 @@ impl SniHandler {
 // ======================== TOR CLIENT INTEGRATION ===========================
 // ============================================================================
 
-pub struct TorClient {
+pub struct SimulatedTorClient {
     config: TorConfig,
     bridges: Arc<Mutex<VecDeque<String>>>,
     current_circuit: Arc<Mutex<Option<String>>>,
     connection_count: Arc<Mutex<u64>>,
 }
 
-impl TorClient {
+impl SimulatedTorClient {
     pub fn new(config: TorConfig) -> Self {
         let bridges = Arc::new(Mutex::new(
             config.bridges.iter().cloned().collect()
@@ -519,7 +519,7 @@ pub struct VpnConnection {
     stats: Arc<Mutex<VpnConnectionStats>>,
     encryption: Arc<EncryptionEngine>,
     sni_handler: Arc<SniHandler>,
-    tor_client: Arc<TorClient>,
+    tor_client: Arc<SimulatedTorClient>,
     packet_buffer: Arc<Mutex<VecDeque<Vec<u8>>>>,
     connection_logs: Arc<Mutex<VecDeque<ConnectionLog>>>,
 }
@@ -540,7 +540,7 @@ impl VpnConnection {
         protocol: VpnProtocol,
         encryption: Arc<EncryptionEngine>,
         sni_handler: Arc<SniHandler>,
-        tor_client: Arc<TorClient>,
+        tor_client: Arc<SimulatedTorClient>,
     ) -> Self {
         Self {
             server,
@@ -733,7 +733,7 @@ impl VpnConnection {
 /// Manages the Arti Tor client lifecycle.
 #[derive(Clone)] // Only one derive
 pub struct TorManager {
-    client: Option<Arc<TorClient>>,
+    client: Option<Arc<SimulatedTorClient>>,
 }
 
 impl TorManager {
@@ -750,7 +750,7 @@ impl TorManager {
         }
     }
 
-    pub fn get_client(&self) -> Option<Arc<TorClient>> {
+    pub fn get_client(&self) -> Option<Arc<SimulatedTorClient>> {
         self.client.clone()
     }
 }
@@ -1714,7 +1714,7 @@ pub mod sni_tor_chain {
 
     pub struct SniTorChainer {
         sni_handler: Arc<SniHandler>,
-        tor_client: Arc<TorClient>,
+        tor_client: Arc<SimulatedTorClient>,
         chain_state: Arc<Mutex<ChainState>>,
     }
 
@@ -1728,7 +1728,7 @@ pub mod sni_tor_chain {
     }
 
     impl SniTorChainer {
-        pub fn new(sni_handler: Arc<SniHandler>, tor_client: Arc<TorClient>) -> Self {
+        pub fn new(sni_handler: Arc<SniHandler>, tor_client: Arc<SimulatedTorClient>) -> Self {
             Self {
                 sni_handler,
                 tor_client,
@@ -1817,12 +1817,12 @@ impl Clone for SniRotationManager {
 
 // TorCircuitManager for dynamic circuit control
 pub struct TorCircuitManager {
-    tor_client: Arc<TorClient>,
+    tor_client: Arc<SimulatedTorClient>,
     rotation_interval: Duration,
 }
 
 impl TorCircuitManager {
-    pub fn new(tor_client: Arc<TorClient>, rotation_secs: u64) -> Self {
+    pub fn new(tor_client: Arc<SimulatedTorClient>, rotation_secs: u64) -> Self {
         Self {
             tor_client,
             rotation_interval: Duration::from_secs(rotation_secs),
