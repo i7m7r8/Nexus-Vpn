@@ -1,6 +1,5 @@
 use tokio::io::AsyncWriteExt;
 use arti_client::TorClientConfig;
-use tor_rtcompat::Runtime;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use arti_client::TorClient as ArtiTorClient;
 // ============================================================================
