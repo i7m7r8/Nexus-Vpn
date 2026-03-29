@@ -7,7 +7,6 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Core async + crypto (latest compatible)
 tokio = { version = "1.44", features = ["full", "rt-multi-thread"] }
 tokio-util = "0.7"
 rustls = { version = "0.23", features = ["ring"] }
@@ -24,12 +23,13 @@ anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-# Arti Tor client v0.40.0 (REQUIRED for SNI→Tor chaining)
+
+# Arti Tor client v0.40 (REQUIRED for SNI->Tor chaining)
 arti-client = { version = "0.40", default-features = false, features = ["tokio", "static-sqlite"] }
 tor-rtcompat = "0.40"
 tor-config = "0.40"
 
-# Android-specific deps - SINGLE BLOCK ONLY
+# Android-specific (SINGLE BLOCK - NO DUPLICATES)
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-context = "0.1"
 
@@ -41,6 +41,3 @@ opt-level = "z"
 lto = true
 strip = true
 panic = "abort"
-
-
-

@@ -2130,6 +2130,6 @@ mod tests {
             assert_eq!(current, format!("{}{}", "a", ".com"));
         });
     }
-}
+
 
 
