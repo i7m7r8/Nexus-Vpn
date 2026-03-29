@@ -748,7 +748,7 @@ fun StatsScreen(
 fun StatCard(label: String, value: String) {
     Card(
         modifier = Modifier
-            .weight(1f)
+            
             .padding(4.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
