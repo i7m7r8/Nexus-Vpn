@@ -807,37 +807,9 @@ impl VpnConnection {
 
 /// Manages the Arti Tor client lifecycle.
 #[derive(Clone)]
+#[derive(Clone)]
 pub struct TorManager {
     client: Option<std::sync::Arc<tokio::sync::Mutex<arti_client::TorClient<tor_rtcompat::PreferredRuntime>>>>,
-
-impl TorManager {
-    pub async fn start(&mut self, _config: TorClientConfig) -> Result<(), String> {
-        use arti_client::TorClient;
-        use tor_rtcompat::PreferredRuntime;
-        
-        let client = TorClient::builder()
-            .with_runtime(PreferredRuntime::current())
-            .config(arti_client::config::Config::default())
-            .create_bootstrapped()
-            .await
-            .map_err(|e| format!("Arti bootstrap failed: {}", e))?;
-        
-        self.client = Some(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
-        Ok(())
-    }
-
-    pub async fn stop(&mut self) {
-        self.client = None;
-    }
-
-    pub fn get_client(&self) -> Option<std::sync::Arc<tokio::sync::Mutex<arti_client::TorClient<tor_rtcompat::PreferredRuntime>>>> {
-        self.client.clone()
-    }
-}
-    fn default() -> Self {
-        Self { client: None }
-    }
-}
 
 
 pub struct VpnEngine {
