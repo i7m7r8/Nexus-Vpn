@@ -750,8 +750,7 @@ fun StatsScreen(
 @Composable
 fun StatCard(label: String, value: String, modifier: Modifier = Modifier.weight(1f)) {
     Card(
-        modifier = modifier
-            .weight(1f)
+        modifier = Modifier
             .padding(4.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
@@ -763,10 +762,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier.weight(
         ) {
             Text(label, fontSize = 10.sp, color = Color.Gray)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ProtonLightPrimary)
-        }
-    }
-}
+            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ProtonLightPrimary)        }
     }
 }
 
