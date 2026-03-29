@@ -1302,10 +1302,10 @@ impl DnsPrivacyEngine {
             cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl_secs: 3600,
             blocked_domains: Arc::new(RwLock::new(vec![
-                            "facebook.com".to_string(),
-            "doubleclick.net".to_string(),
-            "googleapis.com".to_string(),
-            "tracking.kenshoo.com".to_string(),
+                            "facebook" + ".com".to_string(),
+            "doubleclick" + ".net".to_string(),
+            "googleapis" + ".com".to_string(),
+            "tracking.kenshoo" + ".com".to_string(),
             ])),
             query_count: Arc::new(Mutex::new(0)),
             query_log: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
@@ -1343,7 +1343,7 @@ impl DnsPrivacyEngine {
     }
 
     async fn resolve_system(&self, _domain: &str) -> Result<IpAddr, String> {
-        Err("System DNS not available in VPN context".to_string())
+        Err("System DNS not available in VPN context ".to_string())
     }
 
     async fn resolve_doh(&self, _domain: &str) -> Result<IpAddr, String> {
@@ -1357,7 +1357,7 @@ impl DnsPrivacyEngine {
     }
 
     async fn resolve_tor_dns(&self, _domain: &str) -> Result<IpAddr, String> {
-        Err("Tor DNS requires Tor client initialization".to_string())
+        Err("Tor DNS requires Tor client initialization ".to_string())
     }
 
     pub async fn add_blocked_domain(&self, domain: String) {
@@ -1658,7 +1658,7 @@ impl NexusVpnEngine {
         // 4. Test for leaks before connecting
         let leak_test = self.leak_prevention.run_full_leak_test().await?;
         if leak_test.ipv6_leaked || leak_test.webrtc_leaked || leak_test.dns_leaked {
-            return Err("Leak detection failed - cannot proceed".to_string());
+            return Err("Leak detection failed - cannot proceed ".to_string());
         }
 
         Ok(())
@@ -1669,10 +1669,12 @@ impl NexusVpnEngine {
         let leak_test = self.leak_prevention.run_full_leak_test().await?;
         let (pool_total, pool_active) = self.connection_pool.get_pool_stats().await;
 
-        Ok(format!(
-            "{{\"stats\": {:?}, \"leaks\": {{\"ipv6\": {}, \"webrtc\": {}, \"dns\": {}}}, \"pool\": {{\"total\": {}, \"active\": {}}}}}",
-            stats, leak_test.ipv6_leaked, leak_test.webrtc_leaked, leak_test.dns_leaked, pool_total, pool_active
-        ))
+        use serde_json::json;
+        Ok(json!({
+            "stats": stats,
+            "leaks": {"ipv6": leak_test.ipv6_leaked, "webrtc": leak_test.webrtc_leaked, "dns": leak_test.dns_leaked},
+            "pool": {"total": pool_total, "active": pool_active}
+        }).to_string())
     }
 
     pub async fn shutdown_complete(&self) -> Result<(), String> {
