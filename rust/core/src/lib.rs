@@ -686,7 +686,7 @@ impl VpnConnection {
         let latency = start.elapsed().as_millis() as u32;
         self.stats.lock().await.latency_ms = latency;
 
-        self.log_connection_event("SNI TLS handshake complete"))), "READY".to_string())
+        self.log_connection_event("SNI TLS handshake complete", "READY".to_string())
             .await;
 
         Ok(())
@@ -926,9 +926,6 @@ impl VpnEngine {
             let tcp = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(Stream::Tcp(tcp))
         }
-    }"), e))?;
-        Ok(Stream::Tcp(stream))
-    }
     }
 
 // ============================================================================
@@ -1302,10 +1299,10 @@ impl DnsPrivacyEngine {
             cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl_secs: 3600,
             blocked_domains: Arc::new(RwLock::new(vec![
-                            "facebook.com").to_string(),
-            "doubleclick.net").to_string(),
-            "googleapis.com").to_string(),
-            "tracking.kenshoo.com").to_string(),
+                            "facebook.com".to_string(),
+            "doubleclick.net".to_string(),
+            "googleapis.com".to_string(),
+            "tracking.kenshoo.com".to_string(),
             ])),
             query_count: Arc::new(Mutex::new(0)),
             query_log: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
@@ -2045,7 +2042,7 @@ pub struct LogManager {
 impl LogManager {
     pub async fn new(log_dir: std::path::PathBuf, max_size_bytes: u64) -> Result<Self, String> {
         tokio::fs::create_dir_all(&log_dir).await.map_err(|e| e.to_string())?;
-        let log_path = log_dir.join("nexus-vpn.log"));
+        let log_path = log_dir.join("nexus-vpn.log");
         let file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -2077,7 +2074,7 @@ impl LogManager {
 
     async fn rotate(&self) -> Result<(), String> {
         let timestamp = chrono::Local::now().format(r"%Y%m%d_%H%M%S");
-        let old_path = self.log_dir.join("nexus-vpn.log"));
+        let old_path = self.log_dir.join("nexus-vpn.log");
         let new_path = self.log_dir.join(format!("nexus-vpn.{{}}.log", timestamp));
         tokio::fs::rename(&old_path, &new_path).await.map_err(|e| e.to_string())?;
         let new_file = tokio::fs::OpenOptions::new()
@@ -2121,13 +2118,13 @@ mod tests {
     fn test_sni_rotation() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let hosts = vec!["a.com").to_string(), "b.com").to_string()];
+            let hosts = vec!["a.com".to_string(), "b.com".to_string()];
             let rotator = SniRotationManager::new(hosts, 1);
             let current = rotator.current().await;
             assert_eq!(current, "");
             rotator.rotate().await;
             let current = rotator.current().await;
-            assert_eq!(current, "a.com"));
+            assert_eq!(current, "a.com");
         });
     }
 
