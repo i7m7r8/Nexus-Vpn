@@ -66,7 +66,7 @@ pub struct VpnServer {
 pub struct SniConfig {
     pub enabled: bool,
     pub custom_hostname: Option<String>,
-    pub randomize: bool,
+    pub _randomize: bool,
     pub rotation_interval_secs: u64,
     pub cipher_suite: CipherSuite,
     pub tls_version: TlsVersion,
@@ -449,7 +449,7 @@ impl SimulatedTorClient {
 
     pub async fn build_circuit(&self) -> Result<String, String> {
         let mut rng = StdRng::from_entropy();
-        let circuit_id: String = (0..16)
+        let _circuit_id: String = (0..16)
             .map(|_| format!("{:x}", rng.gen::<u8>() % 16))
             .collect();
 
@@ -627,7 +627,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let circuit = self.tor_client.build_circuit().await?;
+        let _circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -848,7 +848,7 @@ impl VpnEngine {
     }
 
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, anyhow::Error> {
-        if let Some(tor_client) = self.tor_manager.get_client() {
+        if let Some(_tor_client) = self.tor_manager.get_client() {
             // FIXME: tor_client.connect not implemented
         let stream = tokio::net::TcpStream::connect((addr, port)).await?;
             Ok(stream)
@@ -990,7 +990,7 @@ impl IptablesManager {
     pub async fn disable_kill_switch(&self) -> Result<(), String> {
         let applied = self.rules_applied.lock().await;
         for rule in applied.iter() {
-            let restore = rule.replace(" -A ", " -D ");
+            let _restore = rule.replace(" -A ", " -D ");
             // In real implementation, execute restore command
         }
 
@@ -1144,7 +1144,7 @@ impl StatsCollector {
         }
     }
 
-    pub async fn record_packet(&self, size: usize, protocol: &str) {
+    pub async fn record_packet(&self, _size: usize, protocol: &str) {
         let mut stats = self.stats.write().await;
         stats.base_stats.packets_sent += 1;
 
@@ -1636,7 +1636,7 @@ pub extern "C" fn nexus_vpn_destroy_engine(ptr: *mut NexusVpnEngine) {
 pub extern "C" fn nexus_vpn_set_sni_config(
     engine: *mut NexusVpnEngine,
     sni_hostname: *const c_char,
-    randomize: bool,
+    _randomize: bool,
     tor_enabled: bool,
 ) -> i32 {
     if engine.is_null() {
@@ -1736,18 +1736,18 @@ pub mod sni_tor_chain {
             }
         }
 
-        pub async fn connect(&self, target_host: &str, target_port: u16) -> Result<(), String> {
+        pub async fn connect(&self, target_host: &str, _target_port: u16) -> Result<(), String> {
             *self.chain_state.lock().await = ChainState::BuildingSni;
 
             // 1. Establish SNI-wrapped connection
-            let sni_hello = self.sni_handler.build_client_hello(target_host, true).await?;
+            let _sni_hello = self.sni_handler.build_client_hello(target_host, true).await?;
             // In real implementation, send SNI hello to a proxy server
             sleep(Duration::from_millis(500)).await;
 
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let circuit = self.tor_client.build_circuit().await?;
+            let _circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
@@ -1874,7 +1874,7 @@ impl BandwidthController {
             return true;
         }
         let mut tokens = self.token_bucket.lock().await;
-        let now = tokio::time::Instant::now();
+        let _now = tokio::time::Instant::now();
         // Simplified: add tokens based on elapsed time
         *tokens = f64::min(*tokens + 0.1, limit_mbps as f64 * 125000.0); // ~125KB per Mbps per sec
         if *tokens >= packet_size_bytes as f64 {
