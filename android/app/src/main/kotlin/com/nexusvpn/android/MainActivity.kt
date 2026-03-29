@@ -936,4 +936,4 @@ fun LogEntry(event: String, timestamp: String) {
         Text(event, fontSize = 12.sp, color = Color.White)
         Text(timestamp, fontSize = 10.sp, color = Color.Gray)
     }
-}
+}// Force rebuild Sun Mar 29 20:13:23 +06 2026
