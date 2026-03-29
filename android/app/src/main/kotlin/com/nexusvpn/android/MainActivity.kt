@@ -1,3 +1,4 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 // ============================================================================
 // NEXUS VPN - Proton VPN Material Design 3 Clone UI
 // Feature-Complete Android App with SNI + Tor + Real-Time Stats
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.nexusvpn.android.service.NexusVpnService
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
