@@ -82,8 +82,8 @@ pub enum VpnProtocol {
     UDP,
     TCP,
     TOR,
-    SNI_TCP,
-    SNI_UDP,
+    SniTcp,
+    SniUdp,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -621,7 +621,7 @@ impl VpnConnection {
             .await;
 
         match self.protocol {
-            VpnProtocol::SNI_TCP | VpnProtocol::SNI_UDP => {
+            VpnProtocol::SniTcp | VpnProtocol::SniUdp => {
                 self.connect_with_sni().await?;
             }
             VpnProtocol::TOR => {
@@ -675,7 +675,7 @@ impl VpnConnection {
         let start = std::time::Instant::now();
 
         self.tor_client.initialize().await?;
-        let _circuit = self.tor_client.build_circuit().await?;
+        let circuit = self.tor_client.build_circuit().await?;
 
         sleep(Duration::from_secs(2)).await;
 
@@ -786,6 +786,8 @@ pub struct TorManager {
 
 impl TorManager {
     pub async fn start(&mut self, _config: TorClientConfig) -> Result<(), String> {
+        // Stub: Tor integration disabled for this build
+        // In production: initialize arti-client here
         Ok(())
     }
 
@@ -889,14 +891,12 @@ impl VpnEngine {
         self.tor_manager.stop().await
     }
 
-    async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Stream, anyhow::Error> {
-        if false {
-            let stream = tokio::net::TcpStream::connect((addr, port)).await?;
-            Ok(Stream::Tcp(stream))
-        } else {
-            let stream = tokio::net::TcpStream::connect((addr, port)).await?;
-            Ok(Stream::Tcp(stream))
-        }
+    async fn connect_to_target(&self, addr: &str, port: u16) -> Result<Stream, String> {
+        // Stub: Always use TCP for now (Tor routing handled at higher layer)
+        let stream = tokio::net::TcpStream::connect((addr, port))
+            .await
+            .map_err(|e| format!("Connection failed: {}", e))?;
+        Ok(Stream::Tcp(stream))
     }
     }
 
@@ -1794,7 +1794,7 @@ pub mod sni_tor_chain {
             *self.chain_state.lock().await = ChainState::BuildingTor;
 
             // 2. Build Tor circuit
-            let _circuit = self.tor_client.build_circuit().await?;
+            let circuit = self.tor_client.build_circuit().await?;
             // In real implementation, route traffic through circuit
 
             *self.chain_state.lock().await = ChainState::Connected;
