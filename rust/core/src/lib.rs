@@ -730,7 +730,7 @@ impl VpnConnection {
 #[derive(Clone)]
 #[derive(Clone)]
 pub struct TorManager {
-    client: Option<Arc<TorClient>>,
+    client: Option<std::sync::Arc<tokio::sync::Mutex<arti_client::TorClient<tor_rtcompat::PreferredRuntime>>>>,
 }
 
 impl TorManager {
@@ -749,7 +749,7 @@ impl TorManager {
         }
     }
 
-    pub fn get_client(&self) -> Option<Arc<TorClient>> {
+    pub fn get_client(&self) -> Option<std::sync::Arc<tokio::sync::Mutex<arti_client::TorClient<tor_rtcompat::PreferredRuntime>>>> {
         self.client.clone()
     }
 }
