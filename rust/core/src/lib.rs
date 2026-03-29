@@ -1,8 +1,8 @@
+use tokio::io::AsyncWriteExt;
 use arti_client::TorClientConfig;
 use tor_rtcompat::Runtime;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use arti_client::TorClient as ArtiTorClient;
-use tokio::io::AsyncWriteExt;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
 // ============================================================================
@@ -852,7 +852,7 @@ impl VpnEngine {
     }
 
     async fn connect_to_target(&self, addr: &str, port: u16) -> Result<impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, anyhow::Error> {
-        if let Some(_tor_client) = self.tor_manager.get_client() {
+        if let Some(tor_client) = self.tor_manager.get_client() {
             let stream = tor_client.connect((addr, port)).await?;
             Ok(stream)
         } else {
