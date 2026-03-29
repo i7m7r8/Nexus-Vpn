@@ -788,12 +788,13 @@ pub struct TorManager {
 }
 
 impl TorManager {
-
-    pub async fn start(&mut self, _config: TorClientConfig) -> Result<(), String> {
-        // Placeholder: arti client not yet integrated
+    pub async fn start(&mut self, config: TorClientConfig) -> Result<(), arti_client::Error> {
+        let runtime = TokioRustlsRuntime::create()?;
+        let client = ArtiTorClient::create(runtime, config)?;
+        let client = client.bootstrap().await?;
+        self.client = Some(Arc::new(client));
         Ok(())
     }
-
 
     pub async fn stop(&mut self) {
         if let Some(client) = self.client.take() {
@@ -808,8 +809,7 @@ impl TorManager {
 
 impl Default for TorManager {
     fn default() -> Self {
-        Self { client: None,
-            }
+        Self { client: None }
     }
 }
 
