@@ -1,8 +1,9 @@
 
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
-use arti_client::{TorClient, TorClientConfig as ArtiConfig};
+use arti_client::TorClient;
 use tor_rtcompat::PreferredRuntime;
+use tor_config::Config as TorConfig;
 
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
@@ -144,7 +145,13 @@ pub struct TorClientConfig {
     pub auto_rotation: bool,
 }
 impl TorClientConfig {
-    pub fn to_arti(&self) -> ArtiConfig { ArtiConfig::default() }
+    pub fn to_arti(&self) -> tor_config::Config {
+        // v0.40: Return tor_config::Config directly
+        let mut cfg = tor_config::Config::default();
+        // Map fields as needed for your use case
+        cfg
+    }
+}
 }
 
 #[derive(Clone, Debug)]
@@ -1041,10 +1048,10 @@ impl IptablesManager {
 
     pub async fn setup_kill_switch(&self) -> Result<(), String> {
         let rules = vec![
-            format!("iptables -A OUTPUT -m mark ! --mark {} -j DROP", self.vpn_mark),
-            "iptables -A OUTPUT -p udp --dport 53 -j DROP".to_string(),
-            "iptables -A OUTPUT -p tcp --dport 53 -j DROP".to_string(),
-            "iptables -A OUTPUT -o lo -j ACCEPT".to_string(),
+            format!("iptables -A OUTPUT -m mark ! --mark {} -j DROP ", self.vpn_mark),
+            "iptables -A OUTPUT -p udp --dport 53 -j DROP ".to_string(),
+            "iptables -A OUTPUT -p tcp --dport 53 -j DROP ".to_string(),
+            "iptables -A OUTPUT -o lo -j ACCEPT ".to_string(),
         ];
 
         let mut applied = self.rules_applied.lock().await;
@@ -1069,10 +1076,10 @@ impl IptablesManager {
 
     pub async fn setup_ipv6_blocking(&self) -> Result<(), String> {
         let rules = vec![
-            "ip6tables -P INPUT DROP".to_string(),
-            "ip6tables -P FORWARD DROP".to_string(),
-            "ip6tables -P OUTPUT DROP".to_string(),
-            "ip6tables -A OUTPUT -o lo -j ACCEPT".to_string(),
+            "ip6tables -P INPUT DROP ".to_string(),
+            "ip6tables -P FORWARD DROP ".to_string(),
+            "ip6tables -P OUTPUT DROP ".to_string(),
+            "ip6tables -A OUTPUT -o lo -j ACCEPT ".to_string(),
         ];
 
         let mut applied = self.rules_applied.lock().await;
@@ -1088,7 +1095,7 @@ impl IptablesManager {
             let rule = if include {
                 format!("iptables -t mangle -A OUTPUT -m owner --uid-owner {} -j MARK --set-mark {}", package, self.vpn_mark)
             } else {
-                format!("iptables -t mangle -A OUTPUT -m owner --uid-owner {} -j ACCEPT", package)
+                format!("iptables -t mangle -A OUTPUT -m owner --uid-owner {} -j ACCEPT ", package)
             };
             self.rules_applied.lock().await.push(rule);
         }
@@ -1299,10 +1306,10 @@ impl DnsPrivacyEngine {
             cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl_secs: 3600,
             blocked_domains: Arc::new(RwLock::new(vec![
-                "facebook.com".to_string(),
-                "doubleclick.net".to_string(),
-                "googleapis.com".to_string(),
-                "tracking.kenshoo.com".to_string(),
+                            "facebook.com".to_string(),
+            "doubleclick.net".to_string(),
+            "googleapis.com".to_string(),
+            "tracking.kenshoo.com".to_string(),
             ])),
             query_count: Arc::new(Mutex::new(0)),
             query_log: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
@@ -2125,3 +2132,4 @@ mod tests {
         });
     }
 }
+
