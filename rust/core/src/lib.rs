@@ -2,8 +2,7 @@
 use tokio::io::AsyncWriteExt;
 use chacha20poly1305::aead::Aead;
 use arti_client::TorClient;
-use tor_rtcompat::PreferredRuntime;
-use tor_config::Config as TorConfig;
+use arti_client::config::Config as TorConfig;
 
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust) - v2.0
@@ -153,9 +152,8 @@ pub struct TorClientConfig {
     pub auto_rotation: bool,
 }
 impl TorClientConfig {
-    pub fn to_arti(&self) -> tor_config::Config {
-        tor_config::Config::default()
-    }
+    pub fn to_arti(&self) -> arti_client::config::Config {
+        arti_client::config::Config::default()    }
 }
 
 #[derive(Clone, Debug)]

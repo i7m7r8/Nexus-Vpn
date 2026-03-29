@@ -25,7 +25,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Arti Tor client v0.40 (REQUIRED for SNI->Tor chaining)
-arti-client = { version = "0.40", default-features = false, features = ["tokio", "static-sqlite"] }
+arti-client = { version = "0.40", default-features = false, features = ["tokio", "static-sqlite", "rustls"] }
 tor-rtcompat = "0.40"
 tor-config = "0.40"
 
