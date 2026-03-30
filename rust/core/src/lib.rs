@@ -1516,7 +1516,8 @@ impl VpnConnection {
         self.stats.lock().await.clone()
     }
 
-    /// Get state    pub async fn get_state(&self) -> ConnectionState {
+    /// Get state
+    pub async fn get_state(&self) -> ConnectionState {
         self.state.lock().await.clone()
     }
 
