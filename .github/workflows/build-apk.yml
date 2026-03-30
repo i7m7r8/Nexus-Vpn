@@ -1,3 +1,8 @@
+# ============================================================================
+# NEXUS VPN - Android Build & Release (SNI → Tor Chain)
+# Builds Rust Core + Android APK on GitHub Actions
+# ============================================================================
+
 name: Build & Release Nexus VPN
 
 on:
@@ -6,58 +11,154 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  RUST_VERSION: 1.83.0
+  NDK_VERSION: 27.0.12077973
+  ANDROID_SDK_VERSION: 35
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ env.RUST_VERSION }}
           targets: aarch64-linux-android, x86_64-linux-android
 
-      - uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27
+      - name: Install Android NDK Targets
+        run: |
+          rustup target add aarch64-linux-android
+          rustup target add x86_64-linux-android
 
-      - uses: actions/setup-java@v4
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 25
+          java-version: '17'
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
 
-      - run: cargo install cargo-ndk
-
-      - name: Build Rust
+      - name: Build Rust Core (ARM64 + X86_64)
         run: |
-          cargo ndk -t arm64-v8a -t x86_64 \
-            -o android/app/src/main/jniLibs build --release
+          cd rust/core
+          cargo build --release --target aarch64-linux-android
+          cargo build --release --target x86_64-linux-android
+          
+          # Create jniLibs directory structure
+          mkdir -p ../target/aarch64-linux-android/release
+          mkdir -p ../target/x86_64-linux-android/release
+          
+          echo "✅ Rust libraries built!"
+          ls -la ../target/*/release/libnexus_vpn_core.so
+
+      - name: Copy Rust Libraries to Android
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          
+          cp rust/target/aarch64-linux-android/release/libnexus_vpn_core.so \
+             android/app/src/main/jniLibs/arm64-v8a/
+          
+          cp rust/target/x86_64-linux-android/release/libnexus_vpn_core.so \
+             android/app/src/main/jniLibs/x86_64/
+          
+          echo "✅ Rust libraries copied to Android project!"
+          ls -la android/app/src/main/jniLibs/*/
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 9.4.1
+          gradle-version: 8.9
 
-      - name: Build APK
+      - name: Make Gradle Executable
         run: |
           cd android
-          gradle assembleRelease
+          chmod +x gradlew
 
-      - name: Create Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v1
+      - name: Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease --stacktrace
+      - name: List Generated APKs
+        run: |
+          echo "=== Generated APKs ==="
+          find android/app/build/outputs/apk/ -name "*.apk" -exec ls -lh {} \;
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: android/app/build/outputs/apk/release/*.apk
-          tag_name: v${{ github.run_number }}
-          body: |
-            ## Nexus VPN v${{ github.run_number }}
+          name: nexus-vpn-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
 
-            Automated release build with latest dependencies
-            - JDK 25
-            - Gradle 9.4.1
-            - Android Gradle Plugin 9.0.0
-            - Kotlin 2.3.20
-            - Rust: tokio 1.44, arti-client 2.1.0, ndk 0.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-vpn-release
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-${{ github.sha }}
+          name: Nexus VPN v1.0.0 - SNI → Tor Chain
+          body: |
+            ## 🎉 Nexus VPN v1.0.0
+            
+            ### 🔐 Masterplan Core Feature: SNI → Tor Chain
+            
+            **Connection Flow:**
+            1. Device → SNI Handler (TLS Client Hello spoofing)
+            2. SNI → Tor Network (Arti client, 3-hop circuit)
+            3. Tor → Internet (Anonymous multi-hop routing)
+            
+            ### 📱 Features
+            - ✅ SNI Obfuscation (DPI bypass)
+            - ✅ Tor Integration (Arti v0.40)
+            - ✅ SNI → Tor Chain (Maximum anonymity)
+            - ✅ Kill Switch (Leak protection)
+            - ✅ IPv6 Blocking
+            - ✅ DNS over HTTPS
+            - ✅ Material 3 UI
+            - ✅ Real-time Statistics
+            
+            ### 🔧 Technical Specs
+            - **Rust Core:** nexus-vpn-core
+            - **Android:** Kotlin + Jetpack Compose
+            - **JNI Bridge:** Rust ↔ Kotlin
+            - **Architectures:** ARM64 + X86_64
+            - **Min SDK:** 24 (Android 7.0)
+            - **Target SDK:** 35 (Android 15)            
+            ### 📥 Downloads
+            - `*-release.apk` - Production build (optimized)
+            - `*-debug.apk` - Debug build (logging enabled)
+            
+            ### ⚠️ Important Note
+            This is a **prototype** implementation. Use at your own risk.
+            Not intended for production use without security audit.
+            
+            ### 🔗 Links
+            - [GitHub Repository](https://github.com/i7m7r8/Nexus-Vpn)
+            - [Report Issues](https://github.com/i7m7r8/Nexus-Vpn/issues)
+          files: |
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+            android/app/build/outputs/apk/debug/app-debug.apk
+          draft: false
+          prerelease: true
+          token: ${{ secrets.GITHUB_TOKEN }}
