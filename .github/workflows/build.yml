@@ -7,9 +7,6 @@ on:
     branches: [main]
 
 jobs:
-  # ════════════════════════════════════════════════════════════
-  # BUILD ANDROID APK (NO RUST - MASTERPLAN 2.0)
-  # ════════════════════════════════════════════════════════════
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -46,10 +43,10 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload Release APK
-        uses: actions/upload-artifact@v4        with:
+        uses: actions/upload-artifact@v4
+        with:
           name: app-release
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
-
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -60,12 +57,11 @@ jobs:
             ## Nexus VPN v2.0.0 - Real VPN Implementation
             
             ### Features
-            - ✅ Real Tor Integration (Tor Android Library)
-            - ✅ SNI Spoofing (TLS Client Hello Modification)
-            - ✅ VPN Mode (No Root Required)
-            - ✅ DNS Leak Protection
-            - ✅ Kill Switch
-            - ✅ Bridge Support (obfs4, webtunnel)
+            - Real Tor Integration (Tor Android Library)
+            - SNI Spoofing (TLS Client Hello Modification)
+            - VPN Mode (No Root Required)
+            - DNS Leak Protection
+            - Kill Switch
             
             ### Installation
             1. Download app-debug.apk
