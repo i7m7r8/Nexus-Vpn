@@ -9,6 +9,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
+import android.os.IBinder
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper

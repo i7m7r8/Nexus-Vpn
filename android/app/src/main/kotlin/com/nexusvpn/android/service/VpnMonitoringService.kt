@@ -1,4 +1,14 @@
 package com.nexusvpn.android.service
+import androidx.core.content.ContextCompat
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.weight
+import androidx.lifecycle.lifecycleScope
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -58,7 +68,9 @@ class VpnMonitoringService : Service() {
     private var autoReconnects = 0L
     private var uptimeMillis = 0L
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val serviceScope
+    private var statsJob: Job? = null
+    private var reconnectJob: Job? = null = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var healthCheckJob: Job? = null
     private var bandwidthJob: Job? = null
     private var latencyJob: Job? = null
