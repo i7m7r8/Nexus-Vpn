@@ -1,4 +1,5 @@
 use arti_client::TorClientConfig;
+use tor_rtcompat::PreferredRuntime;
 // ============================================================================
 // NEXUS VPN - Ultra-Secure SNI+Tor VPN Engine (Pure Rust)
 // Author: Security Team | Build: Production Ready
