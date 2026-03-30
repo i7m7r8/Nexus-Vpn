@@ -1,18 +1,17 @@
 package com.nexusvpn.android.service
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.torproject.android.service.TorService
-import org.torproject.android.service.TorServiceConfig
 import java.util.concurrent.atomic.AtomicBoolean
-import java.io.File
 
 /**
  * PHASE 2: Real Tor Service Implementation
- * Uses official Tor Android Library
+ * Uses official Tor Android Library from Guardian Project
  */
 class TorService(private val context: Context) {
     companion object {
@@ -24,7 +23,6 @@ class TorService(private val context: Context) {
     private var isReady = AtomicBoolean(false)
     private var isStarting = AtomicBoolean(false)
     private var bootstrapProgress = 0
-    private var lastBootstrapStatus = ""
 
     /**
      * Start Tor service with official library
@@ -40,20 +38,15 @@ class TorService(private val context: Context) {
             Log.d(TAG, "Starting Tor service (official library)")
 
             // Start Tor using official Tor Android library
-            val startIntent = TorService.getStartIntent(context)
+            val startIntent = Intent(context, TorService::class.java)
+            startIntent.putExtra(TorService.EXTRA_STATUS_KEY, TorService.STATUS_ON)
             
-            // Configure Tor
-            val config = TorServiceConfig()
-            config.isUseBridges = false
-            config.socksPort = TOR_SOCKS_PORT
-                        // Start the service
             context.startService(startIntent)
             
             // Wait for bootstrap
             val bootstrapped = waitForBootstrap()
             
-            if (bootstrapped) {
-                isReady.set(true)
+            if (bootstrapped) {                isReady.set(true)
                 Log.d(TAG, "✅ Tor service started successfully")
             } else {
                 Log.w(TAG, "⚠️ Tor bootstrap incomplete, continuing anyway")
@@ -71,13 +64,12 @@ class TorService(private val context: Context) {
     }
 
     /**
-     * Wait for Tor bootstrap to complete
+     * Wait for Tor bootstrap
      */
     private suspend fun waitForBootstrap(): Boolean {
         val startTime = System.currentTimeMillis()
         
         while (System.currentTimeMillis() - startTime < BOOTSTRAP_TIMEOUT_MS) {
-            // Check if Tor socks port is listening
             if (isTorPortListening()) {
                 Log.d(TAG, "Tor socks port is listening")
                 return true
@@ -87,7 +79,7 @@ class TorService(private val context: Context) {
             bootstrapProgress = ((System.currentTimeMillis() - startTime) * 100 / BOOTSTRAP_TIMEOUT_MS).toInt()
             
             if (bootstrapProgress % 10 == 0) {
-                Log.d(TAG, "Tor bootstrapping: ${bootstrapProgress}%")
+                Log.d(TAG, "Tor bootstrapping: $bootstrapProgress%")
             }
         }
         
@@ -95,15 +87,15 @@ class TorService(private val context: Context) {
     }
 
     /**
-     * Check if Tor socks port is listening     */
+     * Check if Tor socks port is listening
+     */
     private fun isTorPortListening(): Boolean {
         return try {
             val socket = java.net.Socket("127.0.0.1", TOR_SOCKS_PORT)
             socket.close()
             true
         } catch (e: Exception) {
-            false
-        }
+            false        }
     }
 
     /**
@@ -112,7 +104,8 @@ class TorService(private val context: Context) {
     fun stop() {
         Log.d(TAG, "Stopping Tor service")
         try {
-            val stopIntent = TorService.getStopIntent(context)
+            val stopIntent = Intent(context, TorService::class.java)
+            stopIntent.putExtra(TorService.EXTRA_STATUS_KEY, TorService.STATUS_OFF)
             context.startService(stopIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping Tor", e)
@@ -133,7 +126,7 @@ class TorService(private val context: Context) {
     fun getProgress(): Int = bootstrapProgress
 
     /**
-     * Get Tor addresses to bypass in VPN routing
+     * Get Tor addresses to bypass
      */
     fun getTorAddresses(): List<String> = listOf("127.0.0.1")
 

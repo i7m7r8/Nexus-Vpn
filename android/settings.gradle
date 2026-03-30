@@ -10,6 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Guardian Project Repository (for Tor libraries)
+        maven { url "https://guardianproject.info/maven/" }
+        // Tor Project Repository
+        maven { url "https://repo.torproject.org/maven/" }
     }
 }
 rootProject.name = "NexusVPN"
