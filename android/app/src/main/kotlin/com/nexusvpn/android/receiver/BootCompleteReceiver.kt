@@ -2,8 +2,7 @@ package com.nexusvpn.android.receiver
 
 import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
+import android.content.Intentimport android.content.SharedPreferences
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -52,5 +51,4 @@ class BootCompleteReceiver : BroadcastReceiver() {
             else context.startService(intent)
             Log.d(TAG, "VPN service started after boot")
         } catch (e: Exception) { Log.e(TAG, "Failed to start VPN after boot", e) }
-    }
-}
+    }}

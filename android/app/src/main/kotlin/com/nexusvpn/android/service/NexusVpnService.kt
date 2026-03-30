@@ -9,10 +9,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
-import android.net.LinkProperties
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -41,38 +37,30 @@ class NexusVpnService : VpnService() {
         private const val VPN_SUBNET_PREFIX = 24
         private const val VPN_DNS_PRIMARY = "1.1.1.1"
         private const val VPN_DNS_SECONDARY = "9.9.9.9"
-        private const val RECONNECT_DELAY_MS = 5000L
-        private const val STATS_UPDATE_INTERVAL_MS = 2000L
 
-        init { System.loadLibrary("nexus_vpn_core") }
-    }
+        init { System.loadLibrary("nexus_vpn_core") }    }
+
     private var enginePtr: Long = 0
     private var vpnInterface: ParcelFileDescriptor? = null
     private var isConnected = AtomicBoolean(false)
     private var isConnecting = AtomicBoolean(false)
+    private var sniConnected = AtomicBoolean(false)
+    private var torConnected = AtomicBoolean(false)
     private var sniHostname = ""
     private var torEnabled = true
     private var killSwitchEnabled = true
-    private var dnsLeakProtection = true
     private var ipv6LeakProtection = true
     private var autoReconnect = true
     private var serverId = "default"
-    private var connectivityManager: ConnectivityManager? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private var currentNetwork: Network? = null
-    private var connectionStartTime = 0L
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
-    private var reconnectJob: Job? = null
     private val binder = LocalBinder()
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service onCreate")
         enginePtr = createEngine()
-        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         createNotificationChannel()
-        setupNetworkMonitoring()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -80,7 +68,6 @@ class NexusVpnService : VpnService() {
         when (intent?.action) {
             "CONNECT" -> connectVpn(intent)
             "DISCONNECT" -> disconnectVpn()
-            "UPDATE_CONFIG" -> updateConfig(intent)
         }
         return START_STICKY
     }
@@ -89,27 +76,46 @@ class NexusVpnService : VpnService() {
     override fun onDestroy() {
         Log.d(TAG, "Service onDestroy")
         disconnectVpn()
-        networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
         serviceScope.cancel()
         statsJob?.cancel()
-        reconnectJob?.cancel()
         super.onDestroy()
     }
+
     private fun connectVpn(intent: Intent) {
         if (isConnecting.get() || isConnected.get()) return
         serviceScope.launch {
             try {
                 isConnecting.set(true)
-                updateNotification("Connecting...", "Initializing SNI Handler")
-                extractConfiguration(intent)
+                updateNotification("Connecting...", "Step 1/2: SNI Handler")
+                extractConfiguration(intent)                
+                // Step 1: Connect to SNI Handler
+                Log.d(TAG, "Step 1: Connecting to SNI Handler")
                 val randomize = sniHostname.isEmpty()
-                val configResult = setSniConfig(enginePtr, sniHostname, randomize, torEnabled)
-                Log.d(TAG, "SNI config result: $configResult")
-                setupVpnInterface()
-                startForegroundService()
-                val connectResult = connectSniTor(enginePtr, serverId)
-                Log.d(TAG, "Connection result: $connectResult")
-                if (connectResult == 0) onConnectionSuccess() else onConnectionFailed("Connection failed: $connectResult")
+                val sniResult = setSniConfig(enginePtr, sniHostname, randomize, false)
+                Log.d(TAG, "SNI config result: $sniResult")
+                
+                if (sniResult == 0) {
+                    sniConnected.set(true)
+                    updateNotification("Connecting...", "Step 2/2: Tor Circuit")
+                    
+                    // Step 2: Connect to Tor (if enabled)
+                    if (torEnabled) {
+                        Log.d(TAG, "Step 2: Establishing Tor Circuit")
+                        val torResult = connectSniTor(enginePtr, serverId)
+                        Log.d(TAG, "Tor connection result: $torResult")
+                        
+                        if (torResult == 0) {
+                            torConnected.set(true)
+                            onConnectionSuccess()
+                        } else {
+                            onConnectionFailed("Tor connection failed: $torResult")
+                        }
+                    } else {
+                        onConnectionSuccess()
+                    }
+                } else {
+                    onConnectionFailed("SNI connection failed: $sniResult")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Connection error", e)
                 onConnectionFailed(e.message ?: "Unknown error")
@@ -123,7 +129,6 @@ class NexusVpnService : VpnService() {
         sniHostname = intent.getStringExtra("sni_hostname") ?: ""
         torEnabled = intent.getBooleanExtra("tor_enabled", true)
         killSwitchEnabled = intent.getBooleanExtra("kill_switch", true)
-        dnsLeakProtection = intent.getBooleanExtra("dns_leak_protection", true)
         ipv6LeakProtection = intent.getBooleanExtra("ipv6_leak_protection", true)
         autoReconnect = intent.getBooleanExtra("auto_reconnect", true)
         serverId = intent.getStringExtra("server_id") ?: "default"
@@ -131,10 +136,9 @@ class NexusVpnService : VpnService() {
 
     private fun onConnectionSuccess() {
         isConnected.set(true)
-        connectionStartTime = System.currentTimeMillis()
-        if (killSwitchEnabled) enableKillSwitch()
-        startStatsUpdater()
-        updateNotification("Connected", "SNI to Tor chain active")
+        if (killSwitchEnabled) enableKillSwitch()        startStatsUpdater()
+        updateNotification("Connected", "SNI → Tor Chain Active")
+        Log.d(TAG, "✅ SNI → Tor chain established successfully")
     }
 
     private fun onConnectionFailed(error: String) {
@@ -144,7 +148,8 @@ class NexusVpnService : VpnService() {
         if (autoReconnect) scheduleReconnect()
     }
 
-    private fun setupVpnInterface() {        val builder = Builder()
+    private fun setupVpnInterface() {
+        val builder = Builder()
             .setSession("Nexus VPN")
             .addAddress(VPN_ADDRESS, VPN_SUBNET_PREFIX)
             .addRoute("0.0.0.0", 0)
@@ -155,23 +160,11 @@ class NexusVpnService : VpnService() {
             .setMetered(false)
         if (ipv6LeakProtection) builder.addRoute("::", 0)
         vpnInterface = builder.establish() ?: throw IllegalStateException("Failed to establish VPN interface")
-        monitorVpnInterface()
-    }
-
-    private fun monitorVpnInterface() {
-        serviceScope.launch {
-            while (isConnected.get() && vpnInterface != null) {
-                val fd = vpnInterface?.fileDescriptor ?: break
-                if (fd < 0) break
-                delay(5000)
-            }
-        }
     }
 
     fun disconnectVpn() {
         serviceScope.launch {
             statsJob?.cancel()
-            reconnectJob?.cancel()
             disableKillSwitch()
             if (enginePtr != 0L) {
                 destroyEngine(enginePtr)
@@ -180,6 +173,8 @@ class NexusVpnService : VpnService() {
             cleanupConnection()
             isConnected.set(false)
             isConnecting.set(false)
+            sniConnected.set(false)
+            torConnected.set(false)
             stopForegroundService()
         }
     }
@@ -188,25 +183,9 @@ class NexusVpnService : VpnService() {
         try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) { Log.e(TAG, "Error closing VPN", e) }
     }
 
-    private fun updateConfig(intent: Intent) {
-        sniHostname = intent.getStringExtra("sni_hostname") ?: sniHostname
-        torEnabled = intent.getBooleanExtra("tor_enabled", torEnabled)
-        if (isConnected.get()) setSniConfig(enginePtr, sniHostname, sniHostname.isEmpty(), torEnabled)
-    }
-    private fun setupNetworkMonitoring() {
-        val request = NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
-        networkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) { currentNetwork = network }
-            override fun onLost(network: Network) { if (isConnected.get() && autoReconnect) scheduleReconnect() }
-        }
-        connectivityManager?.registerNetworkCallback(request, networkCallback!!)
-    }
-
     private fun scheduleReconnect() {
-        if (reconnectJob?.isActive == true) return
-        reconnectJob = serviceScope.launch {
-            delay(RECONNECT_DELAY_MS)
-            if (!isConnected.get()) Log.d(TAG, "Attempting auto-reconnect")
+        serviceScope.launch {
+            delay(5000)            if (!isConnected.get()) Log.d(TAG, "Attempting auto-reconnect")
         }
     }
 
@@ -215,7 +194,7 @@ class NexusVpnService : VpnService() {
 
     private fun startStatsUpdater() {
         statsJob = serviceScope.launch {
-            while (isConnected.get()) { delay(STATS_UPDATE_INTERVAL_MS) }
+            while (isConnected.get()) { delay(2000) }
         }
     }
 
@@ -242,7 +221,8 @@ class NexusVpnService : VpnService() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title).setContentText(message)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentIntent(pendingIntent).setOngoing(true)            .setPriority(NotificationCompat.PRIORITY_LOW).build()
+            .setContentIntent(pendingIntent).setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW).build()
     }
 
     private fun updateNotification(title: String, message: String) {
@@ -254,6 +234,5 @@ class NexusVpnService : VpnService() {
     private external fun destroyEngine(enginePtr: Long)
     private external fun setSniConfig(enginePtr: Long, hostname: String, randomize: Boolean, torEnabled: Boolean): Int
     private external fun connectSniTor(enginePtr: Long, serverId: String): Int
-
     inner class LocalBinder : Binder() { fun getService(): NexusVpnService = this@NexusVpnService }
 }

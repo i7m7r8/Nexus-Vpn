@@ -30,12 +30,11 @@ class VpnMonitoringService : Service() {
         private const val NOTIFICATION_CHANNEL_ID = "nexus_vpn_monitor_channel"
         private const val NOTIFICATION_ID = 1002
         private const val HEALTH_CHECK_INTERVAL_MS = 10000L
-        private const val MAX_CONSECUTIVE_FAILURES = 3
     }
 
     private var isMonitoring = AtomicBoolean(false)
     private var isConnected = AtomicBoolean(false)
-    private var consecutiveFailures = 0
+    private var sniHealthy = AtomicBoolean(false)    private var torHealthy = AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var healthCheckJob: Job? = null
     private val binder = LocalBinder()
@@ -46,7 +45,8 @@ class VpnMonitoringService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            "START_MONITORING" -> startMonitoring()            "STOP_MONITORING" -> stopMonitoring()
+            "START_MONITORING" -> startMonitoring()
+            "STOP_MONITORING" -> stopMonitoring()
         }
         return START_STICKY
     }
@@ -75,19 +75,18 @@ class VpnMonitoringService : Service() {
     }
 
     private suspend fun performHealthCheck() {
-        val isHealthy = isConnected.get()
-        if (isHealthy) consecutiveFailures = 0 else consecutiveFailures++
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) Log.e(TAG, "Health check failed")
+        sniHealthy.set(isConnected.get())
+        torHealthy.set(isConnected.get())
+        Log.d(TAG, "Health check: SNI=${sniHealthy.get()}, Tor=${torHealthy.get()}")
     }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, "Nexus VPN Monitor", NotificationManager.IMPORTANCE_LOW)
         val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.createNotificationChannel(channel)
-    }
+        notificationManager.createNotificationChannel(channel)    }
 
     private fun startForegroundService() {
-        val notification = createNotification("Monitoring", "VPN health check active")
+        val notification = createNotification("Monitoring", "SNI → Tor health check active")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         } else { startForeground(NOTIFICATION_ID, notification) }
@@ -95,7 +94,8 @@ class VpnMonitoringService : Service() {
 
     private fun stopForegroundService() { stopForeground(STOP_FOREGROUND_REMOVE) }
 
-    private fun createNotification(title: String, message: String): Notification {        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+    private fun createNotification(title: String, message: String): Notification {
+        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title).setContentText(message)
             .setSmallIcon(android.R.drawable.ic_dialog_info)

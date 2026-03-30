@@ -15,7 +15,6 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         private const val TAG = "NetworkChangeReceiver"
         private const val RECONNECT_DELAY_MS = 3000L
     }
-
     private var wasConnected = false
     private var reconnectScheduled = false
 
