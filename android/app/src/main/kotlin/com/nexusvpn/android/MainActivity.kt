@@ -43,8 +43,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Refreshimport androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
@@ -93,10 +92,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.darkColorScheme
-
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import androidx.core.app.ActivityCompatimport androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.nexusvpn.android.service.NexusVpnService
 import kotlinx.coroutines.delay
@@ -145,10 +141,10 @@ class MainActivity : ComponentActivity() {
     private var connectionStats by mutableStateOf(ConnectionStats("0 Mbps", "0 Mbps", "0 MB", "0 MB", "00:00:00", "-- ms"))
     private var sniTorStatus by mutableStateOf(SniTorStatus(false, false, false, 0))
 
-    private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) startVpnConnection()
+    private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->        if (result.resultCode == RESULT_OK) startVpnConnection()
         else { vpnConnected = false; vpnConnecting = false; connectionPhase = ConnectionPhase.IDLE; connectionStatus = "Permission Denied" }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "MainActivity onCreate")
@@ -194,10 +190,10 @@ class MainActivity : ComponentActivity() {
     private fun TopAppBarContent() {
         TopAppBar(title = { Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Shield, "Nexus VPN", tint = ProtonPurple, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Nexus VPN", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.width(8.dp))            Text("Nexus VPN", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }}, colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface),
-        actions = {            IconButton(onClick = { showSniEditor = true }) { Icon(Icons.Default.Lock, "SNI", tint = ProtonOrange) }
+        actions = {
+            IconButton(onClick = { showSniEditor = true }) { Icon(Icons.Default.Lock, "SNI", tint = ProtonOrange) }
             IconButton(onClick = { currentScreen = Screen.SETTINGS }) { Icon(Icons.Default.Settings, "Settings") }
         })
     }
@@ -243,10 +239,10 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(24.dp))
             SniTorChainVisualization()
             Spacer(modifier = Modifier.height(24.dp))
-            QuickStatsRow()
-            Spacer(modifier = Modifier.height(24.dp))
+            QuickStatsRow()            Spacer(modifier = Modifier.height(24.dp))
             CurrentServerCard()
-        }    }
+        }
+    }
 
     @Composable
     private fun ConnectionStatusCard() {
@@ -292,10 +288,10 @@ class MainActivity : ComponentActivity() {
                     if (connectionPhase == ConnectionPhase.CONNECTING_TOR) {
                         Spacer(modifier = Modifier.height(16.dp))
                         LinearProgressIndicator(progress = sniTorStatus.torProgress / 100f, modifier = Modifier.width(200.dp), color = ProtonOrange)
-                        Text("${sniTorStatus.torProgress}%", fontSize = 12.sp, color = ProtonOrange)
-                    }
+                        Text("${sniTorStatus.torProgress}%", fontSize = 12.sp, color = ProtonOrange)                    }
                     Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { toggleVpn() }, modifier = Modifier.width(200.dp).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = when (connectionPhase) {                        ConnectionPhase.CONNECTED -> ErrorRed
+                    Button(onClick = { toggleVpn() }, modifier = Modifier.width(200.dp).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = when (connectionPhase) {
+                        ConnectionPhase.CONNECTED -> ErrorRed
                         ConnectionPhase.CONNECTING_VPN, ConnectionPhase.CONNECTING_SNI, ConnectionPhase.CONNECTING_TOR -> ProtonOrange
                         ConnectionPhase.ERROR -> ErrorRed
                         else -> ProtonPurple
@@ -341,10 +337,10 @@ class MainActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(value = sniHostname.ifEmpty { "Auto (Randomized)" }, onValueChange = { }, modifier = Modifier.fillMaxWidth(), label = { Text("SNI Hostname") }, readOnly = true, trailingIcon = { IconButton(onClick = { showSniEditor = true }) { Icon(Icons.Default.Refresh, "Edit", tint = ProtonOrange) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ProtonPurple, unfocusedBorderColor = DividerColor))
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Security, "Tor", tint = ProtonOrange, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))                        Text("Tor Integration", fontSize = 14.sp, color = TextSecondary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Tor Integration", fontSize = 14.sp, color = TextSecondary)
                     }
                     Switch(checked = torEnabled, onCheckedChange = { torEnabled = it; savePreferences() }, colors = SwitchDefaults.colors(checkedThumbColor = ProtonPurple))
                 }
@@ -390,10 +386,10 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     @Composable
     private fun CurrentServerCard() {
-        Card(modifier = Modifier.fillMaxWidth().clickable { currentScreen = Screen.SERVERS }, colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {            Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Card(modifier = Modifier.fillMaxWidth().clickable { currentScreen = Screen.SERVERS }, colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Public, "Server", tint = ProtonPurple, modifier = Modifier.size(28.dp))
                     Spacer(modifier = Modifier.width(12.dp))
@@ -439,10 +435,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (isSelected) Icon(Icons.Default.CheckCircle, "Selected", tint = ProtonPurple)
-            }
+                if (isSelected) Icon(Icons.Default.CheckCircle, "Selected", tint = ProtonPurple)            }
         }
     }
+
     @Composable
     private fun StatisticsScreen() {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -488,10 +484,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-        }
-    }
+        }    }
 
-    @Composable    private fun SettingsScreen() {
+    @Composable
+    private fun SettingsScreen() {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
             SettingsSection("Connection") {
@@ -510,7 +506,6 @@ class MainActivity : ComponentActivity() {
                 SettingsInfoRow("Version", "2.0.0")
                 SettingsInfoRow("Build", "Phase 2 Complete")
                 SettingsInfoRow("Architecture", "SNI → Tor Chain")
-                SettingsInfoRow("Tor Library", "org.torproject:tor-android:1.2.0")
             }
         }
     }
@@ -528,7 +523,7 @@ class MainActivity : ComponentActivity() {
     private fun SettingsSwitch(label: String, description: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
         Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(label, fontSize = 16.sp)
                     Text(description, fontSize = 12.sp, color = TextTertiary)
                 }
@@ -538,9 +533,9 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SettingsInfoRow(label: String, value: String) {
-        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, fontSize = 14.sp, color = TextSecondary)            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    private fun SettingsInfoRow(label: String, value: String) {        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, fontSize = 14.sp, color = TextSecondary)
+            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 
@@ -583,15 +578,13 @@ class MainActivity : ComponentActivity() {
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
             
-            // Simulate connection phases for UI
             lifecycleScope.launch {
                 delay(2000)
                 connectionPhase = ConnectionPhase.CONNECTING_SNI
                 connectionStatus = "Step 2/3: Starting SNI Proxy..."
-                sniTorStatus = sniTorStatus.copy(sniConnected = true)
-                delay(1000)                connectionPhase = ConnectionPhase.CONNECTING_TOR
+                sniTorStatus = sniTorStatus.copy(sniConnected = true)                delay(1000)
+                connectionPhase = ConnectionPhase.CONNECTING_TOR
                 connectionStatus = "Step 3/3: Bootstrapping Tor..."
-                // Simulate Tor bootstrap
                 for (i in 1..100 step 10) {
                     sniTorStatus = sniTorStatus.copy(torProgress = i)
                     delay(300)
