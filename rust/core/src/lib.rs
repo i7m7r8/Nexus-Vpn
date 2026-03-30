@@ -1571,6 +1571,7 @@ impl VpnConnection {
 // ======================== VPN ENGINE (MAIN CONTROLLER) ======================
 // ============================================================================
 
+}
 /// Main VPN Engine - Controls all VPN operations
 /// /// This is the central controller that manages:
 /// - Server selection and connection
@@ -1578,7 +1579,6 @@ impl VpnConnection {
 /// - Tor integration (SNI→Tor chaining)
 /// - Encryption
 /// - Statistics and logging
-}
 pub struct VpnEngine {
     /// Available servers
     servers: Arc<RwLock<HashMap<String, VpnServer>>>,
