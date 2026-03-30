@@ -5,6 +5,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -37,7 +38,8 @@ class TorService(private val context: Context) {
         log("Starting Tor service")
 
         try {
-            if (isSocks5Listening(TOR_SOCKS_PORT)) {                log("Tor SOCKS5 already available (Orbot running)")
+            if (isSocks5Listening(TOR_SOCKS_PORT)) {
+                log("Tor SOCKS5 already available (Orbot running)")
                 isReady.set(true)
                 isStarting.set(false)
                 return@withContext true
@@ -78,7 +80,8 @@ class TorService(private val context: Context) {
         }
         val dataDir = File(context.filesDir, "tor_data").apply { mkdirs() }
         val torrcFile = File(context.filesDir, "torrc").apply {
-            writeText("SocksPort " + TOR_SOCKS_PORT + "\n")
+            writeText("SocksPort " + TOR_SOCKS_PORT + "
+")
         }
         return try {
             torProcess = ProcessBuilder(torBin.absolutePath, "-f", torrcFile.absolutePath)
@@ -86,7 +89,8 @@ class TorService(private val context: Context) {
             log("Tor process launched")
             true
         } catch (e: Exception) {
-            log("Failed to launch tor: " + e.message)            false
+            log("Failed to launch tor: " + e.message)
+            false
         }
     }
 

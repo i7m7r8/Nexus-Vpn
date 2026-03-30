@@ -41,7 +41,8 @@ class NexusVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var isConnected = AtomicBoolean(false)
     private var isConnecting = AtomicBoolean(false)
-    private var torService: TorService? = null    private var sniProxyService: SniProxyService? = null
+    private var torService: TorService? = null
+    private var sniProxyService: SniProxyService? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var vpnThreadJob: Job? = null
     private val logQueue = ConcurrentLinkedQueue<String>()
@@ -69,7 +70,7 @@ class NexusVpnService : VpnService() {
 
     private fun connectVpn() {
         if (isConnecting.get() || isConnected.get()) return
-        
+
         serviceScope.launch {
             try {
                 isConnecting.set(true)
@@ -78,7 +79,7 @@ class NexusVpnService : VpnService() {
                 addLog("Step 1/3: Establishing VPN interface")
                 if (!setupVpnInterface()) {
                     addLog("VPN interface creation failed")
-                    return
+                    return@launch
                 }
                 addLog("VPN interface established")
 
@@ -90,7 +91,8 @@ class NexusVpnService : VpnService() {
 
                 addLog("Step 3/3: Starting Tor")
                 torService = TorService(this@NexusVpnService)
-                torService?.setLogCallback { msg -> addLog("Tor: $msg") }                torService?.start()
+                torService?.setLogCallback { msg -> addLog("Tor: $msg") }
+                torService?.start()
                 addLog("Tor SOCKS5: port $TOR_PORT")
 
                 addLog("Starting packet routing")
@@ -139,16 +141,17 @@ class NexusVpnService : VpnService() {
 
                 while (isConnected.get()) {
                     try {
-                        val bytesRead = vpnInput.read(buffer)                        if (bytesRead > 0) {
+                        val bytesRead = vpnInput.read(buffer)
+                        if (bytesRead > 0) {
                             packetNum++
                             if (bytesRead >= 20) {
                                 val protocol = buffer[9].toInt() and 0xFF
                                 when (protocol) {
-                                    6 -> { 
+                                    6 -> {
                                         tcpCount++
                                         if (packetNum <= 20) addLog("Packet $packetNum: TCP ${bytesRead}B")
                                     }
-                                    17 -> { 
+                                    17 -> {
                                         udpCount++
                                         if (packetNum <= 20) addLog("Packet $packetNum: UDP ${bytesRead}B")
                                     }
@@ -188,7 +191,8 @@ class NexusVpnService : VpnService() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
-            "Nexus VPN",            NotificationManager.IMPORTANCE_LOW
+            "Nexus VPN",
+            NotificationManager.IMPORTANCE_LOW
         )
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
@@ -237,4 +241,5 @@ class NexusVpnService : VpnService() {
         while (logQueue.size > 100) logQueue.poll()
     }
 
-    fun getLogs(): List<String> = logQueue.toList()}
+    fun getLogs(): List<String> = logQueue.toList()
+}

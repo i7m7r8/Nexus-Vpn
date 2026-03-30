@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
@@ -38,7 +39,8 @@ class SniProxyService {
         return try {
             serverSocket = ServerSocket()
             serverSocket!!.reuseAddress = true
-            serverSocket!!.bind(InetSocketAddress("127.0.0.1", PROXY_PORT))            isRunning.set(true)
+            serverSocket!!.bind(InetSocketAddress("127.0.0.1", PROXY_PORT))
+            isRunning.set(true)
             scope.launch { acceptLoop() }
             log("SNI Proxy started on port $PROXY_PORT")
             true
@@ -87,7 +89,8 @@ class SniProxyService {
 
     private fun handleHttpConnect(
         client: Socket,
-        clientIn: InputStream,        clientOut: OutputStream,
+        clientIn: InputStream,
+        clientOut: OutputStream,
         header: String
     ) {
         val line = header.lines().firstOrNull() ?: return
@@ -99,13 +102,17 @@ class SniProxyService {
         log("CONNECT $destHost:$destPort via Tor")
 
         val torSocket = connectViaTorSocks5(destHost, destPort) ?: run {
-            clientOut.write("HTTP/1.1 503 Service Unavailable\r\n\r\n".toByteArray())
+            clientOut.write("HTTP/1.1 503 Service Unavailable
+
+".toByteArray())
             log("Tor connection failed")
             return
         }
 
         torSocket.use { tor ->
-            clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
+            clientOut.write("HTTP/1.1 200 Connection Established
+
+".toByteArray())
             clientOut.flush()
             log("Tunnel established")
 
@@ -136,7 +143,8 @@ class SniProxyService {
             }
 
             try {
-                val buf = ByteArray(BUFFER_SIZE)                while (true) {
+                val buf = ByteArray(BUFFER_SIZE)
+                while (true) {
                     val n = torIn.read(buf)
                     if (n <= 0) break
                     clientOut.write(buf, 0, n)
@@ -185,7 +193,8 @@ class SniProxyService {
                 while (true) {
                     val n = torIn.read(buf)
                     if (n <= 0) break
-                    clientOut.write(buf, 0, n)                    clientOut.flush()
+                    clientOut.write(buf, 0, n)
+                    clientOut.flush()
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "Direct TLS return error", e)
@@ -234,7 +243,8 @@ class SniProxyService {
             }
 
             log("Tor connected to $host:$port")
-            sock        } catch (e: Exception) {
+            sock
+        } catch (e: Exception) {
             log("Tor connection failed: " + e.message)
             null
         }
@@ -271,21 +281,22 @@ class SniProxyService {
             pos += 32
             val sessionLen = data[pos++].toInt() and 0xFF
             pos += sessionLen
-            val cipherLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos+1].toInt() and 0xFF)
+            val cipherLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
             pos += 2 + cipherLen
             val compLen = data[pos++].toInt() and 0xFF
             pos += compLen
             if (pos + 2 > data.size) return null
-            val extTotal = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos+1].toInt() and 0xFF)
+            val extTotal = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
             pos += 2
             val extEnd = pos + extTotal
             while (pos + 4 <= extEnd && pos + 4 <= data.size) {
-                val extType = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos+1].toInt() and 0xFF)
-                val extLen = ((data[pos+2].toInt() and 0xFF) shl 8) or (data[pos+3].toInt() and 0xFF)
+                val extType = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+                val extLen = ((data[pos + 2].toInt() and 0xFF) shl 8) or (data[pos + 3].toInt() and 0xFF)
                 pos += 4
-                if (extType == 0x0000) {                    pos += 2
+                if (extType == 0x0000) {
+                    pos += 2
                     pos += 1
-                    val nameLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos+1].toInt() and 0xFF)
+                    val nameLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
                     pos += 2
                     return String(data, pos, nameLen, Charsets.US_ASCII)
                 }
@@ -313,7 +324,7 @@ class SniProxyService {
         data[3] = (newTlsLen shr 8).toByte()
         data[4] = (newTlsLen and 0xFF).toByte()
         val hsLen = ((data[6].toInt() and 0xFF) shl 16) or
-                    ((data[7].toInt() and 0xFF) shl 8) or (data[8].toInt() and 0xFF)
+                ((data[7].toInt() and 0xFF) shl 8) or (data[8].toInt() and 0xFF)
         val newHsLen = hsLen + diff
         data[6] = (newHsLen shr 16).toByte()
         data[7] = (newHsLen shr 8).toByte()
@@ -332,5 +343,6 @@ class SniProxyService {
 
     private fun log(msg: String) {
         Log.d(TAG, msg)
-        logCallback?.invoke(msg)    }
+        logCallback?.invoke(msg)
+    }
 }
