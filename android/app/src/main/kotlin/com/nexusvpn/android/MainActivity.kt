@@ -116,8 +116,11 @@ val DividerColor = Color(0xFF404040)
 
 data class VpnServer(val id: String, val name: String, val country: String, val flag: String, val latency: Int, val load: Int)
 data class ConnectionStats(val uploadSpeed: String, val downloadSpeed: String, val totalUpload: String, val totalDownload: String, val connectionTime: String, val latency: String)
+data class LogEntry(val timestamp: String, val message: String, val type: LogType)
+enum class LogType { INFO, SUCCESS, WARNING, ERROR }
+
 data class SniTorStatus(val sniConnected: Boolean, val torConnected: Boolean, val chainActive: Boolean, val torProgress: Int)
-enum class Screen { HOME, SERVERS, STATISTICS, SETTINGS }
+enum class Screen { HOME, SERVERS, STATISTICS, LOGS, SETTINGS }
 enum class ConnectionPhase { IDLE, CONNECTING_VPN, CONNECTING_SNI, CONNECTING_TOR, CONNECTED, DISCONNECTING, ERROR }
 
 class MainActivity : ComponentActivity() {
@@ -143,6 +146,8 @@ class MainActivity : ComponentActivity() {
     private var showSniEditor by mutableStateOf(false)
     private var connectionStats by mutableStateOf(ConnectionStats("0 Mbps", "0 Mbps", "0 MB", "0 MB", "00:00:00", "-- ms"))
     private var sniTorStatus by mutableStateOf(SniTorStatus(false, false, false, 0))
+    private var logList by mutableStateOf<List<LogEntry>>(emptyList())
+    private var showLogs by mutableStateOf(false)
 
     private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->        if (result.resultCode == RESULT_OK) startVpnConnection()
         else { vpnConnected = false; vpnConnecting = false; connectionPhase = ConnectionPhase.IDLE; connectionStatus = "Permission Denied" }
@@ -217,6 +222,9 @@ class MainActivity : ComponentActivity() {
                 icon = { Icon(Icons.Outlined.Speed, "Stats") },
                 label = { Text("Stats", fontSize = 12.sp) },
                 colors = NavigationBarItemDefaults.colors(selectedIconColor = ProtonPurple, selectedTextColor = ProtonPurple, unselectedIconColor = TextSecondary))
+            NavigationBarItem(selected = currentScreen == Screen.LOGS, onClick = { currentScreen = Screen.LOGS },                icon = { Icon(Icons.Default.Info, "Logs") },
+                label = { Text("Logs", fontSize = 12.sp) },
+                colors = NavigationBarItemDefaults.colors(selectedIconColor = ProtonPurple, selectedTextColor = ProtonPurple, unselectedIconColor = TextSecondary))
             NavigationBarItem(selected = currentScreen == Screen.SETTINGS, onClick = { currentScreen = Screen.SETTINGS },
                 icon = { Icon(if (currentScreen == Screen.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings, "Settings") },
                 label = { Text("Settings", fontSize = 12.sp) },
@@ -230,6 +238,7 @@ class MainActivity : ComponentActivity() {
             Screen.HOME -> HomeScreen()
             Screen.SERVERS -> ServerListScreen()
             Screen.STATISTICS -> StatisticsScreen()
+            Screen.LOGS -> LogViewer()
             Screen.SETTINGS -> SettingsScreen()
         }
         if (showSniEditor) SniEditorDialog()
@@ -491,7 +500,39 @@ class MainActivity : ComponentActivity() {
             }
         }    }
 
+    
     @Composable
+    private fun LogViewer() {
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Connection Logs", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                OutlinedButton(onClick = { logList = emptyList() }) { Text("Clear") }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier.fillMaxSize().weight(1f),
+                verticalArrangement = androidx.compose.foundation.lazy.Arrangement.spacedBy(4.dp)
+            ) {
+                items(logList.reversed()) { log ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("[${log.timestamp}]", fontSize = 11.sp, color = TextTertiary, modifier = Modifier.width(70.dp))
+                        Text(
+                            log.message,
+                            fontSize = 13.sp,
+                            color = when (log.type) {
+                                LogType.SUCCESS -> SuccessGreen
+                                LogType.WARNING -> ProtonOrange
+                                LogType.ERROR -> ErrorRed
+                                else -> TextSecondary
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+@Composable
     private fun SettingsScreen() {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
@@ -558,12 +599,21 @@ class MainActivity : ComponentActivity() {
         }, confirmButton = { TextButton(onClick = { sniHostname = inputValue; savePreferences(); showSniEditor = false }) { Text("Apply", color = ProtonPurple) } }, dismissButton = { TextButton(onClick = { showSniEditor = false }) { Text("Cancel") } }, containerColor = DarkSurfaceVariant)
     }
 
+    
+    private fun addLog(message: String, type: LogType = LogType.INFO) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        logList = logList + LogEntry(timestamp, message, type)
+        // Keep only last 100 logs
+        if (logList.size > 100) logList = logList.drop(1)
+    }
+
     private fun toggleVpn() { if (vpnConnected) disconnectVpn() else connectVpn() }
 
     private fun connectVpn() {
         vpnConnecting = true
         connectionPhase = ConnectionPhase.CONNECTING_VPN
         connectionStatus = "Requesting VPN Permission..."
+        addLog("🔷 Starting VPN connection", LogType.INFO)
         sniTorStatus = SniTorStatus(false, false, false, 0)
         val vpnIntent = VpnService.prepare(this)
         if (vpnIntent != null) vpnPermissionLauncher.launch(vpnIntent) else startVpnConnection()
@@ -573,6 +623,7 @@ class MainActivity : ComponentActivity() {
         try {
             connectionPhase = ConnectionPhase.CONNECTING_VPN
             connectionStatus = "Step 1/3: Establishing VPN..."
+        addLog("📡 Step 1/3: Establishing VPN interface", LogType.INFO)
         val intent = Intent(this, NexusVpnService::class.java).apply {
                 action = "CONNECT"
         putExtra("sni_hostname", sniHostname)
@@ -587,10 +638,12 @@ class MainActivity : ComponentActivity() {
                 delay(2000)
                 connectionPhase = ConnectionPhase.CONNECTING_SNI
                 connectionStatus = "Step 2/3: Starting SNI Proxy..."
+        addLog("🔐 Step 2/3: Starting SNI Proxy", LogType.INFO)
         sniTorStatus = sniTorStatus.copy(sniConnected = true)
                 delay(1000)
                 connectionPhase = ConnectionPhase.CONNECTING_TOR
                 connectionStatus = "Step 3/3: Bootstrapping Tor..."
+        addLog("🧅 Step 3/3: Bootstrapping Tor circuit", LogType.INFO)
         for (i in 1..100 step 10) {
                     sniTorStatus = sniTorStatus.copy(torProgress = i)
                     delay(300)
@@ -598,6 +651,7 @@ class MainActivity : ComponentActivity() {
                 sniTorStatus = sniTorStatus.copy(torConnected = true, chainActive = true)
                 connectionPhase = ConnectionPhase.CONNECTED
                 connectionStatus = "Connected"
+        addLog("✅ SNI → Tor chain established!", LogType.SUCCESS)
         vpnConnected = true
                 vpnConnecting = false
                 Log.d(TAG, "SNI → Tor chain established")
@@ -608,6 +662,7 @@ class MainActivity : ComponentActivity() {
             vpnConnected = false
             connectionPhase = ConnectionPhase.ERROR
             connectionStatus = "Connection Failed"
+        addLog("❌ Connection failed", LogType.ERROR)
         }
     }
 
@@ -621,6 +676,7 @@ class MainActivity : ComponentActivity() {
             vpnConnecting = false
             connectionPhase = ConnectionPhase.IDLE
             connectionStatus = "Disconnected"
+        addLog("⏹️ VPN disconnected", LogType.WARNING)
         sniTorStatus = SniTorStatus(false, false, false, 0)
             connectionStats = ConnectionStats("0 Mbps", "0 Mbps", "0 MB", "0 MB", "00:00:00", "-- ms")
             Log.d(TAG, "VPN disconnected")
