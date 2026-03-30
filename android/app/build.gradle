@@ -56,3 +56,17 @@ dependencies {
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.material:material-icons-extended'
 }
+
+// ════════════════════════════════════════════════════════════
+// TOR ANDROID LIBRARY
+// ════════════════════════════════════════════════════════════
+dependencies {
+    // Official Tor Android Library
+    implementation 'org.torproject:tor-android:1.2.0'
+    
+    // SNI Proxy (we'll implement or use existing)
+    // For now, we'll build our own TLS modifier
+    
+    // Additional networking
+    implementation 'com.github shadowsocks:shadowsocks-libev:latest'
+}
