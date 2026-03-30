@@ -80,8 +80,7 @@ class TorService(private val context: Context) {
         }
         val dataDir = File(context.filesDir, "tor_data").apply { mkdirs() }
         val torrcFile = File(context.filesDir, "torrc").apply {
-            writeText("SocksPort " + TOR_SOCKS_PORT + "
-")
+            writeText("SocksPort " + TOR_SOCKS_PORT + "\n")
         }
         return try {
             torProcess = ProcessBuilder(torBin.absolutePath, "-f", torrcFile.absolutePath)
