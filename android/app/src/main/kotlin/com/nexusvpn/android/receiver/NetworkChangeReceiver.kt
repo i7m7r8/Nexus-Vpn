@@ -4,9 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
-import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkInfo
 import android.util.Log
 import com.nexusvpn.android.service.NexusVpnService
 
@@ -18,7 +16,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
     }
 
     private var lastNetworkType = -1
-    private var this.wasConnected = false
+    private var wasConnected = false
     private var reconnectScheduled = false
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -31,124 +29,55 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val networkInfo = connectivityManager.activeNetworkInfo
 
-        handleNetworkStateChange(context, networkInfo, connectivityManager)
-    }
+        handleNetworkStateChange(context, networkInfo, connectivityManager)    }
 
     private fun handleNetworkStateChange(
         context: Context,
-        networkInfo: NetworkInfo?,
+        networkInfo: android.net.NetworkInfo?,
         connectivityManager: ConnectivityManager
     ) {
         val isConnected = networkInfo?.isConnected == true
         val networkType = networkInfo?.type ?: -1
 
-        Log.d(TAG, "Network state: connected=$isConnected, type=$networkType, lastType=$lastNetworkType")
+        Log.d(TAG, "Network state: connected=$isConnected, type=$networkType")
 
         when {
-            !isConnected && this.wasConnected -> {
-                Log.w(TAG, "Network disconnected")                this.wasConnected = false
-                onNetworkDisconnected(context)
+            !isConnected && wasConnected -> {
+                Log.w(TAG, "Network disconnected")
+                wasConnected = false
             }
 
-            isConnected && !this.wasConnected -> {
+            isConnected && !wasConnected -> {
                 Log.d(TAG, "Network connected")
-                this.wasConnected = true
-                onNetworkConnected(context, networkType, connectivityManager)
+                wasConnected = true
+                if (shouldReconnect(networkType)) {
+                    scheduleReconnect(context)
+                }
             }
 
-            isConnected && this.wasConnected && networkType != lastNetworkType -> {
+            isConnected && wasConnected && networkType != lastNetworkType -> {
                 Log.d(TAG, "Network type changed: $lastNetworkType -> $networkType")
-                onNetworkTypeChanged(context, lastNetworkType, networkType)
+                scheduleReconnect(context)
             }
         }
 
         lastNetworkType = networkType
     }
 
-    private fun onNetworkDisconnected(context: Context) {
-        Log.w(TAG, "Handling network disconnection")
-        reconnectScheduled = false
-    }
-
-    private fun onNetworkConnected(context: Context, networkType: Int, connectivityManager: ConnectivityManager) {
-        Log.d(TAG, "Handling network connection: type=$networkType")
-
-        val networkQuality = assessNetworkQuality(context, connectivityManager)
-        Log.d(TAG, "Network quality: $networkQuality")
-
-        if (shouldReconnect(networkType, networkQuality)) {
-            scheduleReconnect(context)
-        }
-    }
-
-    private fun onNetworkTypeChanged(context: Context, oldType: Int, newType: Int) {
-        Log.d(TAG, "Network type changed from $oldType to $newType")
-
-        when {
-            isWifi(newType) && !isWifi(oldType) -> {
-                Log.d(TAG, "Switched to WiFi")
-                onSwitchedToWifi(context)
-            }
-            !isWifi(newType) && isWifi(oldType) -> {
-                Log.d(TAG, "Switched to Cellular")
-                onSwitchedToCellular(context)
-            }
-        }
-
-        scheduleReconnect(context)    }
-
-    private fun onSwitchedToWifi(context: Context) {
-        Log.d(TAG, "Switched to WiFi - may improve performance")
-    }
-
-    private fun onSwitchedToCellular(context: Context) {
-        Log.d(TAG, "Switched to Cellular - monitoring data usage")
-    }
-
-    private fun assessNetworkQuality(
-        context: Context,
-        connectivityManager: ConnectivityManager
-    ): NetworkQuality {
-        val network = connectivityManager.activeNetwork ?: return NetworkQuality.UNKNOWN
-
-        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return NetworkQuality.UNKNOWN
-
-        val downlinkBandwidth = capabilities.linkDownstreamBandwidthKbps
-        val uplinkBandwidth = capabilities.linkUpstreamBandwidthKbps
-
-        val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        val isMetered = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED).not()
-
-        Log.d(TAG, "Network capabilities: downlink=$downlinkBandwidth, uplink=$uplinkBandwidth, metered=$isMetered")
-
-        return when {
-            downlinkBandwidth < 100 -> NetworkQuality.POOR
-            downlinkBandwidth < 1000 -> NetworkQuality.FAIR
-            downlinkBandwidth < 10000 -> NetworkQuality.GOOD
-            else -> NetworkQuality.EXCELLENT
-        }
-    }
-
-    private fun shouldReconnect(networkType: Int, quality: NetworkQuality): Boolean {
-        if (quality == NetworkQuality.POOR) {
-            Log.w(TAG, "Skipping reconnect on poor quality network")
-            return false
-        }
-
-        return true
+    private fun shouldReconnect(networkType: Int): Boolean {
+        return networkType != -1
     }
 
     private fun scheduleReconnect(context: Context) {
         if (reconnectScheduled) {
-            Log.d(TAG, "Reconnect already scheduled")
             return
         }
 
         reconnectScheduled = true
+
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             Log.d(TAG, "Executing scheduled reconnect")
             reconnectScheduled = false
-
             val intent = Intent(context, NexusVpnService::class.java).apply {
                 action = "CONNECT"
             }
@@ -165,22 +94,6 @@ class NetworkChangeReceiver : BroadcastReceiver() {
             }
         }, RECONNECT_DELAY_MS)
 
-        Log.d(TAG, "Reconnect scheduled in ${RECONNECT_DELAY_MS / 1000}s")
+        Log.d(TAG, "Reconnect scheduled")
     }
-
-    private fun isWifi(networkType: Int): Boolean {
-        return networkType == ConnectivityManager.TYPE_WIFI
-    }
-
-    private fun isCellular(networkType: Int): Boolean {
-        return networkType == ConnectivityManager.TYPE_MOBILE
-    }
-}
-
-enum class NetworkQuality {
-    UNKNOWN,
-    POOR,
-    FAIR,
-    GOOD,
-    EXCELLENT
 }

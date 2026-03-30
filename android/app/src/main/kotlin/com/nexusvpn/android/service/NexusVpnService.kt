@@ -17,8 +17,7 @@ import android.net.VpnService
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
+import android.os.IBinderimport android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -46,6 +45,7 @@ class NexusVpnService : VpnService() {
         private const val VPN_DNS_SECONDARY = "9.9.9.9"
         private const val RECONNECT_DELAY_MS = 5000L
         private const val STATS_UPDATE_INTERVAL_MS = 2000L
+
         init {
             System.loadLibrary("nexus_vpn_core")
         }
@@ -67,7 +67,6 @@ class NexusVpnService : VpnService() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var currentNetwork: Network? = null
-
     private var connectionStartTime = 0L
     private var bytesUploaded = 0L
     private var bytesDownloaded = 0L
@@ -95,7 +94,8 @@ class NexusVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: action=${intent?.action}")
 
-        when (intent?.action) {            "CONNECT" -> connectVpn(intent)
+        when (intent?.action) {
+            "CONNECT" -> connectVpn(intent)
             "DISCONNECT" -> disconnectVpn()
             "UPDATE_CONFIG" -> updateConfig(intent)
         }
@@ -115,8 +115,7 @@ class NexusVpnService : VpnService() {
             connectivityManager?.unregisterNetworkCallback(it)
         }
 
-        serviceScope.cancel()
-        statsJob?.cancel()
+        serviceScope.cancel()        statsJob?.cancel()
         reconnectJob?.cancel()
 
         super.onDestroy()
@@ -144,7 +143,8 @@ class NexusVpnService : VpnService() {
                 val randomize = sniHostname.isEmpty()
                 val configResult = setSniConfig(
                     enginePtr,
-                    sniHostname,                    randomize,
+                    sniHostname,
+                    randomize,
                     torEnabled
                 )
                 Log.d(TAG, "SNI config result: $configResult")
@@ -164,7 +164,6 @@ class NexusVpnService : VpnService() {
                 } else {
                     onConnectionFailed("Connection failed with code: $connectResult")
                 }
-
             } catch (e: Exception) {
                 Log.e(TAG, "Connection error", e)
                 onConnectionFailed(e.message ?: "Unknown error")
@@ -193,6 +192,7 @@ class NexusVpnService : VpnService() {
         if (killSwitchEnabled) {
             enableKillSwitch()
         }
+
         startStatsUpdater()
         updateNotification("Connected", "SNI to Tor chain active")
         Log.d(TAG, "SNI to Tor chain established successfully")
@@ -203,7 +203,7 @@ class NexusVpnService : VpnService() {
         updateNotification("Connection Failed", error)
         cleanupConnection()
 
-        if (autoReconnect && !false) {
+        if (autoReconnect) {
             scheduleReconnect()
         }
     }
@@ -213,8 +213,7 @@ class NexusVpnService : VpnService() {
 
         val builder = Builder()
             .setSession("Nexus VPN")
-            .addAddress(VPN_ADDRESS, VPN_SUBNET_PREFIX)
-            .addRoute("0.0.0.0", 0)
+            .addAddress(VPN_ADDRESS, VPN_SUBNET_PREFIX)            .addRoute("0.0.0.0", 0)
             .addDnsServer(VPN_DNS_PRIMARY)
             .addDnsServer(VPN_DNS_SECONDARY)
             .setMtu(VPN_MTU)
@@ -242,7 +241,8 @@ class NexusVpnService : VpnService() {
                         Log.e(TAG, "VPN file descriptor invalid")
                         break
                     }
-                    delay(5000)                } catch (e: Exception) {
+                    delay(5000)
+                } catch (e: Exception) {
                     Log.e(TAG, "Error monitoring VPN interface", e)
                     break
                 }
@@ -262,8 +262,7 @@ class NexusVpnService : VpnService() {
                 statsJob?.cancel()
                 statsJob = null
 
-                reconnectJob?.cancel()
-                reconnectJob = null
+                reconnectJob?.cancel()                reconnectJob = null
 
                 disableKillSwitch()
 
@@ -291,7 +290,8 @@ class NexusVpnService : VpnService() {
     private fun cleanupConnection() {
         try {
             vpnInterface?.close()
-            vpnInterface = null            Log.d(TAG, "VPN interface closed")
+            vpnInterface = null
+            Log.d(TAG, "VPN interface closed")
         } catch (e: Exception) {
             Log.e(TAG, "Error closing VPN interface", e)
         }
@@ -312,7 +312,6 @@ class NexusVpnService : VpnService() {
             setSniConfig(enginePtr, sniHostname, randomize, torEnabled)
         }
     }
-
     private fun setupNetworkMonitoring() {
         val request = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -340,7 +339,8 @@ class NexusVpnService : VpnService() {
             }
 
             override fun onLinkPropertiesChanged(
-                network: Network,                linkProperties: LinkProperties
+                network: Network,
+                linkProperties: LinkProperties
             ) {
                 Log.d(TAG, "Link properties changed")
             }
@@ -359,9 +359,8 @@ class NexusVpnService : VpnService() {
             Log.d(TAG, "Scheduling reconnect in ${RECONNECT_DELAY_MS / 1000}s")
             delay(RECONNECT_DELAY_MS)
 
-            if (!isConnected.get() && !false) {
-                Log.d(TAG, "Attempting auto-reconnect")
-            }
+            if (!isConnected.get()) {
+                Log.d(TAG, "Attempting auto-reconnect")            }
         }
     }
 
@@ -389,6 +388,7 @@ class NexusVpnService : VpnService() {
         packetsSent += (100..1000).random()
         packetsReceived += (1000..10000).random()
     }
+
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
@@ -409,8 +409,7 @@ class NexusVpnService : VpnService() {
     private fun startForegroundService() {
         val notification = createNotification("Connecting", "Setting up VPN tunnel")
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceCompat.startForeground(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {            ServiceCompat.startForeground(
                 this,
                 NOTIFICATION_ID,
                 notification,
@@ -438,7 +437,8 @@ class NexusVpnService : VpnService() {
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(message)            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentText(message)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -458,8 +458,7 @@ class NexusVpnService : VpnService() {
         enginePtr: Long,
         hostname: String,
         randomize: Boolean,
-        torEnabled: Boolean
-    ): Int
+        torEnabled: Boolean    ): Int
     private external fun connectSniTor(enginePtr: Long, serverId: String): Int
 
     inner class LocalBinder : Binder() {
