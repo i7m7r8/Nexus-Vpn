@@ -136,7 +136,8 @@ class NexusVpnService : VpnService() {
 
     private fun onConnectionSuccess() {
         isConnected.set(true)
-        if (killSwitchEnabled) enableKillSwitch()        startStatsUpdater()
+        if (killSwitchEnabled) enableKillSwitch()
+        startStatsUpdater()
         updateNotification("Connected", "SNI → Tor Chain Active")
         Log.d(TAG, "✅ SNI → Tor chain established successfully")
     }

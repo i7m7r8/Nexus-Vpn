@@ -178,16 +178,7 @@ class MainActivity : ComponentActivity() {
         if (serverId.isNotEmpty()) currentServer = getServerById(serverId)
     }
 
-    private fun savePreferences() {
-        with(sharedPrefs.edit()) {
-            putString("sni_hostname", sniHostname)
-            putBoolean("tor_enabled", torEnabled)
-            putBoolean("kill_switch", killSwitchEnabled)
-            currentServer?.let { putString("last_server_id", it.id) }
-            apply()        }
-    }
-
-    private fun initializeUI() {
+      private fun initializeUI() {
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(primary = ProtonPurple, background = DarkBackground, surface = DarkSurface)) {
                 Surface(modifier = Modifier.fillMaxSize(), color = DarkBackground) {
@@ -331,7 +322,8 @@ class MainActivity : ComponentActivity() {
                     ConnectionPhaseNode("Device", Icons.Default.Public, vpnConnected)
                     ConnectionPhaseArrow(connectionPhase == ConnectionPhase.CONNECTING_SNI || sniTorStatus.sniConnected)
                     ConnectionPhaseNode("SNI", Icons.Default.Lock, sniTorStatus.sniConnected)
-                    ConnectionPhaseArrow(connectionPhase == ConnectionPhase.CONNECTING_TOR || (sniTorStatus.sniConnected && torEnabled))                    ConnectionPhaseNode("Tor", Icons.Default.Cloud, sniTorStatus.torConnected)
+                    ConnectionPhaseArrow(connectionPhase == ConnectionPhase.CONNECTING_TOR || (sniTorStatus.sniConnected && torEnabled))
+                    ConnectionPhaseNode("Tor", Icons.Default.Cloud, sniTorStatus.torConnected)
                     ConnectionPhaseArrow(sniTorStatus.chainActive)
                     ConnectionPhaseNode("Internet", Icons.Default.Public, sniTorStatus.chainActive)
                 }
@@ -625,7 +617,8 @@ class MainActivity : ComponentActivity() {
             connectionStatus = "Disconnecting..."
             val intent = Intent(this, NexusVpnService::class.java).apply { action = "DISCONNECT" }
             stopService(intent)
-            vpnConnected = false            vpnConnecting = false
+            vpnConnected = false
+            vpnConnecting = false
             connectionPhase = ConnectionPhase.IDLE
             connectionStatus = "Disconnected"
             sniTorStatus = SniTorStatus(false, false, false)
