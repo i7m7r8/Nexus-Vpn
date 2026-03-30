@@ -1418,7 +1418,8 @@ impl VpnConnection {
         Ok(())
     }
 
-    /// CHAINED: SNI → Tor → Internet (Masterplan core feature)    async fn connect_sni_tor_chain(&self) -> Result<(), String> {
+    /// CHAINED: SNI → Tor → Internet (Masterplan core feature)
+    async fn connect_sni_tor_chain(&self) -> Result<(), String> {
         info!("Connecting with SNI→Tor chain...");
         
         // Step 1: SNI handshake
