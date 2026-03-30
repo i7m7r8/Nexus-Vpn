@@ -6,7 +6,7 @@ import android.util.Log
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.torproject.android.service.TorService
+// Tor library removed
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -38,8 +38,8 @@ class TorService(private val context: Context) {
             Log.d(TAG, "Starting Tor service (official library)")
 
             // Start Tor using official Tor Android library
-            val startIntent = Intent(context, TorService::class.java)
-            startIntent.putExtra(TorService.EXTRA_STATUS_KEY, TorService.STATUS_ON)
+            val startIntent = Intent()
+            startIntent.putExtra("status", 1)
             
             context.startService(startIntent)
             
@@ -104,8 +104,8 @@ class TorService(private val context: Context) {
     fun stop() {
         Log.d(TAG, "Stopping Tor service")
         try {
-            val stopIntent = Intent(context, TorService::class.java)
-            stopIntent.putExtra(TorService.EXTRA_STATUS_KEY, TorService.STATUS_OFF)
+            val stopIntent = Intent()
+            stopIntent.putExtra("status", 0)
             context.startService(stopIntent)
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping Tor", e)

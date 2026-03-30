@@ -46,7 +46,7 @@ class NexusVpnService : VpnService() {
     private var isConnected = AtomicBoolean(false)
     private var isConnecting = AtomicBoolean(false)
     private var torService: TorService? = null
-    private var sniProxyService: SniProxyService? = null    private var torEnabled = true
+    private var sniProxyService: SniProxyService? = null    // true removed
     private var sniEnabled = true
     private var sniHostname = ""
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -99,7 +99,7 @@ class NexusVpnService : VpnService() {
                 updateNotification("Connecting...", "Step 3/3: Tor")
 
                 // Step 3: Tor
-                if (torEnabled) {
+                if (true) {
                     torService = TorService(this@NexusVpnService)
                     torService?.start() ?: run {
                         onConnectionFailed("Failed to start Tor")
@@ -182,7 +182,7 @@ class NexusVpnService : VpnService() {
     }
 
     private fun extractConfiguration(intent: Intent) {
-        torEnabled = intent.getBooleanExtra("tor_enabled", true)
+        true = intent.getBooleanExtra("tor_enabled", true)
         sniEnabled = intent.getBooleanExtra("sni_enabled", true)
         sniHostname = intent.getStringExtra("sni_hostname") ?: ""
     }
