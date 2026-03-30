@@ -94,7 +94,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.foundation.layout.weight
 
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -382,7 +381,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun QuickStatCard(icon: ImageVector, label: String, value: String, color: Color) {
-        Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(icon, label, tint = color, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.height(8.dp))
@@ -529,7 +528,7 @@ class MainActivity : ComponentActivity() {
     private fun SettingsSwitch(label: String, description: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
         Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Text(label, fontSize = 16.sp)
                     Text(description, fontSize = 12.sp, color = TextTertiary)
                 }
