@@ -215,9 +215,7 @@ class NexusVpnService : VpnService() {
 
     private fun startStatsUpdater() {
         statsJob = serviceScope.launch {
-            while (isConnected.get()) {
-                delay(STATS_UPDATE_INTERVAL_MS)
-            }
+            while (isConnected.get()) { delay(STATS_UPDATE_INTERVAL_MS) }
         }
     }
 
@@ -234,22 +232,17 @@ class NexusVpnService : VpnService() {
         val notification = createNotification("Connecting", "Setting up VPN tunnel")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        } else { startForeground(NOTIFICATION_ID, notification) }
     }
 
     private fun stopForegroundService() { stopForeground(STOP_FOREGROUND_REMOVE) }
 
     private fun createNotification(title: String, message: String): Notification {
-        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(message)
+        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(title).setContentText(message)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+            .setContentIntent(pendingIntent).setOngoing(true)            .setPriority(NotificationCompat.PRIORITY_LOW).build()
     }
 
     private fun updateNotification(title: String, message: String) {

@@ -39,13 +39,13 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Homeimport androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settingsimport androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.Home
@@ -88,13 +88,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeightimport androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScopeimport com.nexusvpn.android.service.NexusVpnService
+import androidx.lifecycle.lifecycleScope
+import com.nexusvpn.android.service.NexusVpnService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -137,13 +137,13 @@ class MainActivity : ComponentActivity() {
     private var currentScreen by mutableStateOf(Screen.HOME)
     private var showSniEditor by mutableStateOf(false)
     private var connectionStats by mutableStateOf(ConnectionStats("0 Mbps", "0 Mbps", "0 MB", "0 MB", "00:00:00", "-- ms"))
-
     private val vpnPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) startVpnConnection()
         else { vpnConnected = false; vpnConnecting = false; connectionStatus = "Permission Denied" }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {        super.onCreate(savedInstanceState)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         Log.d(TAG, "MainActivity onCreate")
         loadPreferences()
         requestPermissions()
@@ -186,13 +186,13 @@ class MainActivity : ComponentActivity() {
         TopAppBar(title = { Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Shield, "Nexus VPN", tint = ProtonPurple, modifier = Modifier.size(28.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Nexus VPN", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        }}, colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface),
+            Text("Nexus VPN", fontSize = 22.sp, fontWeight = FontWeight.Bold)        }}, colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface),
         actions = {
             IconButton(onClick = { showSniEditor = true }) { Icon(Icons.Default.Lock, "SNI", tint = ProtonOrange) }
             IconButton(onClick = { currentScreen = Screen.SETTINGS }) { Icon(Icons.Default.Settings, "Settings") }
         })
     }
+
     @Composable
     private fun BottomNavigationBar() {
         NavigationBar(containerColor = DarkSurface) {
@@ -235,13 +235,13 @@ class MainActivity : ComponentActivity() {
             QuickStatsRow()
             Spacer(modifier = Modifier.height(24.dp))
             SniTorChainCard()
-            Spacer(modifier = Modifier.height(24.dp))
-            CurrentServerCard()
+            Spacer(modifier = Modifier.height(24.dp))            CurrentServerCard()
         }
     }
 
     @Composable
-    private fun ConnectionStatusCard() {        Card(modifier = Modifier.fillMaxWidth().height(280.dp), colors = CardDefaults.cardColors(containerColor = DarkSurface), shape = RoundedCornerShape(24.dp)) {
+    private fun ConnectionStatusCard() {
+        Card(modifier = Modifier.fillMaxWidth().height(280.dp), colors = CardDefaults.cardColors(containerColor = DarkSurface), shape = RoundedCornerShape(24.dp)) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Box(modifier = Modifier.size(120.dp).clip(CircleShape).background(brush = Brush.radialGradient(colors = if (vpnConnected) listOf(SuccessGreen, SuccessGreen.copy(alpha = 0.5f)) else if (vpnConnecting) listOf(ProtonOrange, ProtonOrange.copy(alpha = 0.5f)) else listOf(DarkSurfaceVariant, DarkSurface))), contentAlignment = Alignment.Center) {
@@ -284,13 +284,13 @@ class MainActivity : ComponentActivity() {
     private fun SniTorChainCard() {
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("SNI to Tor Chain", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {                    Text("SNI to Tor Chain", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Badge(containerColor = if (torEnabled && vpnConnected) SuccessGreen else ProtonOrange) { Text(if (torEnabled) "ENABLED" else "DISABLED", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    ChainNode("Device", Icons.Default.Public, vpnConnected)                    ChainArrow(vpnConnected)
+                    ChainNode("Device", Icons.Default.Public, vpnConnected)
+                    ChainArrow(vpnConnected)
                     ChainNode("SNI", Icons.Default.Lock, vpnConnected && sniHostname.isNotEmpty())
                     ChainArrow(vpnConnected)
                     ChainNode("Tor", Icons.Default.Cloud, vpnConnected && torEnabled)
@@ -333,13 +333,13 @@ class MainActivity : ComponentActivity() {
         Card(modifier = Modifier.fillMaxWidth().clickable { currentScreen = Screen.SERVERS }, colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Public, "Server", tint = ProtonPurple, modifier = Modifier.size(28.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(Icons.Default.Public, "Server", tint = ProtonPurple, modifier = Modifier.size(28.dp))                    Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text("Current Server", fontSize = 12.sp, color = TextTertiary)
                         Text(currentServer?.let { "${it.flag} ${it.name}" } ?: "Select Server", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
-                }                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Change", tint = TextSecondary)
+                }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Change", tint = TextSecondary)
             }
         }
     }
@@ -382,13 +382,13 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun StatisticsScreen() {
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+    private fun StatisticsScreen() {        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text("Statistics", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
             StatCard("Download Speed", connectionStats.downloadSpeed, Icons.Default.Download, ProtonPurple)
             Spacer(modifier = Modifier.height(12.dp))
             StatCard("Upload Speed", connectionStats.uploadSpeed, Icons.Default.Cloud, ProtonOrange)
-            Spacer(modifier = Modifier.height(12.dp))            StatCard("Total Downloaded", connectionStats.totalDownload, Icons.Default.DataUsage, SuccessGreen)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatCard("Total Downloaded", connectionStats.totalDownload, Icons.Default.DataUsage, SuccessGreen)
             Spacer(modifier = Modifier.height(12.dp))
             StatCard("Connection Time", connectionStats.connectionTime, Icons.Default.Timer, ProtonPurple)
         }
@@ -431,13 +431,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     @Composable
     private fun SettingsSection(title: String, content: @Composable () -> Unit) {
         Column {
             Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ProtonPurple)
             Spacer(modifier = Modifier.height(12.dp))
-            content()        }
+            content()
+        }
     }
 
     @Composable
@@ -480,13 +480,13 @@ class MainActivity : ComponentActivity() {
     private fun connectVpn() {
         vpnConnecting = true
         connectionStatus = "Requesting VPN Permission..."
-        val vpnIntent = VpnService.prepare(this)
-        if (vpnIntent != null) vpnPermissionLauncher.launch(vpnIntent) else startVpnConnection()
+        val vpnIntent = VpnService.prepare(this)        if (vpnIntent != null) vpnPermissionLauncher.launch(vpnIntent) else startVpnConnection()
     }
 
     private fun startVpnConnection() {
         try {
-            connectionStatus = "Starting SNI Handler..."            val intent = Intent(this, NexusVpnService::class.java).apply {
+            connectionStatus = "Starting SNI Handler..."
+            val intent = Intent(this, NexusVpnService::class.java).apply {
                 action = "CONNECT"
                 putExtra("sni_hostname", sniHostname)
                 putExtra("tor_enabled", torEnabled)
@@ -529,13 +529,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     private fun formatConnectionTime(startTime: Long): String {
         val elapsed = System.currentTimeMillis() - startTime
         val seconds = (elapsed / 1000) % 60
         val minutes = (elapsed / (1000 * 60)) % 60
         val hours = (elapsed / (1000 * 60 * 60))
-        return String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)    }
+        return String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
+    }
 
     private fun requestPermissions() {
         val permissions = arrayOf(Manifest.permission.INTERNET, Manifest.permission.ACCESS_NETWORK_STATE, Manifest.permission.BIND_VPN_SERVICE, Manifest.permission.POST_NOTIFICATIONS)

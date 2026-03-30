@@ -10,9 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -46,9 +44,9 @@ class VpnMonitoringService : Service() {
     override fun onBind(intent: Intent?): IBinder = binder
     override fun onDestroy() { stopMonitoring(); serviceScope.cancel(); super.onDestroy() }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {        when (intent?.action) {
-            "START_MONITORING" -> startMonitoring()
-            "STOP_MONITORING" -> stopMonitoring()
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            "START_MONITORING" -> startMonitoring()            "STOP_MONITORING" -> stopMonitoring()
         }
         return START_STICKY
     }
@@ -92,21 +90,16 @@ class VpnMonitoringService : Service() {
         val notification = createNotification("Monitoring", "VPN health check active")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        } else { startForeground(NOTIFICATION_ID, notification) }
     }
+
     private fun stopForegroundService() { stopForeground(STOP_FOREGROUND_REMOVE) }
 
-    private fun createNotification(title: String, message: String): Notification {
-        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+    private fun createNotification(title: String, message: String): Notification {        val pendingIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(message)
+            .setContentTitle(title).setContentText(message)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .build()
+            .setContentIntent(pendingIntent).setOngoing(true).build()
     }
 
     inner class LocalBinder : Binder() { fun getService(): VpnMonitoringService = this@VpnMonitoringService }

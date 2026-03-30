@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.nexusvpn.android.service.NexusVpnService
 
@@ -29,13 +32,8 @@ class BootCompleteReceiver : BroadcastReceiver() {
     private fun handleBootCompleted(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val autoStartEnabled = prefs.getBoolean(KEY_AUTO_START, false)
-        if (!autoStartEnabled) {
-            Log.d(TAG, "Auto-start disabled")
-            return
-        }
-        Handler(Looper.getMainLooper()).postDelayed({
-            startVpnService(context, prefs)
-        }, BOOT_DELAY_MS)
+        if (!autoStartEnabled) { Log.d(TAG, "Auto-start disabled"); return }
+        Handler(Looper.getMainLooper()).postDelayed({ startVpnService(context, prefs) }, BOOT_DELAY_MS)
     }
 
     private fun startVpnService(context: Context, prefs: SharedPreferences) {
@@ -50,14 +48,9 @@ class BootCompleteReceiver : BroadcastReceiver() {
                 putExtra("server_id", lastServerId)
                 putExtra("auto_reconnect", true)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
             Log.d(TAG, "VPN service started after boot")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start VPN after boot", e)
-        }
+        } catch (e: Exception) { Log.e(TAG, "Failed to start VPN after boot", e) }
     }
 }
