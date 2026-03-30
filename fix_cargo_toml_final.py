@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+cargo_toml = Path("rust/core/Cargo.toml")
+content = """[package]
+name = "nexus-vpn-core"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tokio = { version = "1.44", features = ["full"] }
+tokio-util = "0.7"
+rustls = "0.23"
+chacha20poly1305 = "0.10"
+aes-gcm = "0.10"
+sha2 = "0.10"
+rand = "0.8"
+derivative = "2.2"
+futures = "0.3"
+jni = "0.21"
+android_logger = "0.14"
+log = "0.4"
+anyhow = "1.0"
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Arti with no persistent state (no sqlite)
+arti-client = { version = "0.40.0", default-features = false, features = ["rustls", "tokio"] }
+tor-rtcompat = { version = "0.40.0", features = ["tokio", "rustls"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = "0.8"
+ndk-glue = "0.7"
+
+[dev-dependencies]
+criterion = "0.5"
+"""
+cargo_toml.write_text(content)
+print("✅ Cargo.toml rewritten with correct arti-client dependency.")

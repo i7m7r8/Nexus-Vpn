@@ -24,12 +24,24 @@ chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Arti Tor client v0.40 (REQUIRED for SNI->Tor chaining)
+# Arti Tor client v0.40
 arti-client = { version = "0.40", default-features = false, features = ["tokio", "static-sqlite", "rustls"] }
 tor-rtcompat = "0.40"
 tor-config = "0.40"
 
-# Android-specific (SINGLE BLOCK - NO DUPLICATES)
+# Missing crates
+hmac = "0.12"
+hkdf = "0.12"
+pbkdf2 = "0.12"
+argon2 = "0.5"
+bcrypt = "0.15"
+webpki-roots = "0.26"
+tokio-rustls = "0.26"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+password-hash = "0.5"
+
+# Android-specific
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-context = "0.1"
 

@@ -60,14 +60,16 @@ use argon2::{Argon2, password_hash::SaltString};
 use bcrypt::{hash, verify, DEFAULT_COST};
 
 // TLS/Networking
-use rustls::{ClientConfig, ClientConnection, RootCertStore, ServerName};
+use rustls::pki_types::ServerName;
+use rustls::{ClientConfig, ClientConnection, RootCertStore};
 use rustls::pki_types::{CertificateDer, ServerName as RustlsServerName};
 use webpki_roots::TLS_SERVER_ROOTS;
 use tokio::net::{TcpStream, UdpSocket, TcpListener};
 use tokio_rustls::TlsConnector;
 
 // Arti Tor Client (v0.40)
-use arti_client::{TorClient, config::Config as ArtiConfig};
+use arti_client::TorClient;
+use tor_rtcompat::PreferredRuntime;
 use tor_rtcompat::PreferredRuntime;
 
 // Serialization
@@ -75,7 +77,7 @@ use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde_json::{json, Value, from_str, to_string};
 
 // Logging & Error Handling
-use tracing::{info, warn, error, debug, trace, Level};
+use tracing::{info, error, debug, trace, Level};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use anyhow::{anyhow, Error, Result, Context};
 
@@ -284,7 +286,7 @@ pub struct VpnServer {
 }
 
 /// Server capabilities flags
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ServerCapabilities {
     pub supports_sni: bool,
     pub supports_tor: bool,
@@ -407,6 +409,7 @@ pub struct SplitTunnelConfig {
 /// Split Tunneling Mode
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitTunnelMode {
+    #[default]
     /// Only these apps use VPN
     IncludeOnly,
     /// All apps except these use VPN
@@ -552,7 +555,7 @@ pub struct LeakTestResult {
 }
 
 /// Pooled Connection
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct PooledConnection {
     /// Connection ID
     pub id: String,
@@ -578,11 +581,11 @@ pub enum Stream {
     /// TLS-wrapped TCP
     Tls(tokio_rustls::client::TlsStream<TcpStream>),
     /// Tor stream
-    Tor(arti_client::Stream),
+    Tor(tor_rtcompat::general::Stream),
     /// SNI-obfuscated stream
     Sni(TcpStream),
     /// Chained SNI→Tor stream
-    SniTor(Box<Stream>, arti_client::Stream),
+    SniTor(Box<Stream>, tor_rtcompat::general::Stream),
 }
 
 // ============================================================================
@@ -633,7 +636,7 @@ impl EncryptionEngine {
 
     /// Encrypt with ChaCha20-Poly1305
     pub async fn encrypt_chacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let rng = self.rng.lock().await;
+        let mut rng = self.rng.lock().await;
         let nonce_bytes: [u8; NONCE_SIZE] = rng.gen();
         drop(rng);
         
@@ -666,7 +669,7 @@ impl EncryptionEngine {
 
     /// Encrypt with XChaCha20-Poly1305 (extended nonce)
     pub async fn encrypt_xchacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let rng = self.rng.lock().await;
+        let mut rng = self.rng.lock().await;
         let nonce_bytes: [u8; XNONCE_SIZE] = rng.gen();
         drop(rng);
 
@@ -701,7 +704,7 @@ impl EncryptionEngine {
 
     /// Encrypt with AES-256-GCM
     pub async fn encrypt_aes256(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let rng = self.rng.lock().await;
+        let mut rng = self.rng.lock().await;
         let nonce_bytes: [u8; NONCE_SIZE] = rng.gen();
         drop(rng);
 
@@ -735,7 +738,7 @@ impl EncryptionEngine {
 
     /// Encrypt with AES-128-GCM (faster)
     pub async fn encrypt_aes128(&self, plaintext: &[u8]) -> Result<Vec<u8>, String> {
-        let rng = self.rng.lock().await;
+        let mut rng = self.rng.lock().await;
         let nonce_bytes: [u8; NONCE_SIZE] = rng.gen();
         drop(rng);
         let nonce = aes_gcm::Nonce::from(nonce_bytes);
@@ -1196,7 +1199,6 @@ impl TorManager {
         info!("Starting Tor client with Arti v0.40...");
 
         let client = TorClient::builder()
-            .with_runtime(PreferredRuntime::current())
             .config(ArtiConfig::default())
             .create_bootstrapped()
             .await
@@ -1228,13 +1230,13 @@ impl TorManager {
     }
 
     /// Connect through Tor
-    pub async fn connect_tcp(&self, addr: &str, port: u16) -> Result<arti_client::Stream, String> {        let client = self.client
+    pub async fn connect_tcp(&self, addr: &str, port: u16) -> Result<tor_rtcompat::general::Stream, String> {        let client = self.client
             .as_ref()
             .ok_or_else(|| "Tor client not started".to_string())?;
 
         let client_guard = client.lock().await;
         client_guard
-            .connect_tcp((addr, port))
+            .connect(format!("{}:{}", addr, port))
             .await
             .map_err(|e| format!("Tor connect failed: {}", e))
     }
@@ -1662,13 +1664,13 @@ impl VpnEngine {
         self.custom_sni_hostname = custom_sni;
         self.tor_enabled = tor_enabled;
 
-        if tor_enabled && !self.tor_manager.is_bootstrapped_blocking() {
+        if tor_enabled && !self.tor_manager.is_ready().await {
             let config = TorClientConfig::default();
             let mut tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 let _ = tor_manager.start(config).await;
             });
-        } else if !tor_enabled && self.tor_manager.is_bootstrapped_blocking() {
+        } else if !tor_enabled && self.tor_manager.is_ready().await {
             let mut tor_manager = self.tor_manager.clone();
             tokio::spawn(async move {
                 tor_manager.stop().await;            });
@@ -2237,7 +2239,7 @@ pub extern "C" fn nexus_vpn_get_stats(engine: *const NexusVpnEngine) -> *const c
         let rt = tokio::runtime::Runtime::new().unwrap();
         if let Ok(stats) = rt.block_on((*engine).get_comprehensive_stats()) {
             let cstring = CString::new(stats).unwrap();
-            Box::leak(cstring).as_ptr()
+            Box::leak(Box::new(cstring)).as_ptr()
         } else {
             std::ptr::null()
         }
