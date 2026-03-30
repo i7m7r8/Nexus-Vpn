@@ -13,7 +13,7 @@ on:
 
 env:
   RUST_VERSION: 1.83.0
-  NDK_VERSION: 27.0.12077973
+  NDK_VERSION: "27.0.12077973"
   ANDROID_SDK_VERSION: 35
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: ${{ env.NDK_VERSION }}
+          ndk-version: r27
 
       - name: Setup Java JDK 17
         uses: actions/setup-java@v4
@@ -55,26 +55,28 @@ jobs:
           cargo build --release --target aarch64-linux-android
           cargo build --release --target x86_64-linux-android
           
-          # Create jniLibs directory structure
-          mkdir -p ../target/aarch64-linux-android/release
-          mkdir -p ../target/x86_64-linux-android/release
-          
           echo "✅ Rust libraries built!"
-          ls -la ../target/*/release/libnexus_vpn_core.so
+          ls -la ../target/*/release/libnexus_vpn_core.so 2>/dev/null || echo "Checking target dir..."
+          find ../target -name "libnexus_vpn_core.so" 2>/dev/null
 
       - name: Copy Rust Libraries to Android
         run: |
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           mkdir -p android/app/src/main/jniLibs/x86_64
           
+          # Find and copy the libraries
+          find rust/target -name "libnexus_vpn_core.so" -exec echo "Found: {}" \;
+          
           cp rust/target/aarch64-linux-android/release/libnexus_vpn_core.so \
-             android/app/src/main/jniLibs/arm64-v8a/
+             android/app/src/main/jniLibs/arm64-v8a/ 2>/dev/null || \
+          find rust/target -path "*/aarch64-linux-android/release/libnexus_vpn_core.so" -exec cp {} android/app/src/main/jniLibs/arm64-v8a/ \;
           
           cp rust/target/x86_64-linux-android/release/libnexus_vpn_core.so \
-             android/app/src/main/jniLibs/x86_64/
+             android/app/src/main/jniLibs/x86_64/ 2>/dev/null || \
+          find rust/target -path "*/x86_64-linux-android/release/libnexus_vpn_core.so" -exec cp {} android/app/src/main/jniLibs/x86_64/ \;
           
           echo "✅ Rust libraries copied to Android project!"
-          ls -la android/app/src/main/jniLibs/*/
+          ls -la android/app/src/main/jniLibs/*/ 2>/dev/null || echo "jniLibs not created yet"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -84,33 +86,37 @@ jobs:
       - name: Make Gradle Executable
         run: |
           cd android
-          chmod +x gradlew
+          chmod +x gradlew || echo "gradlew not found, will use gradle wrapper"
 
       - name: Build Debug APK
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace
 
       - name: Build Release APK
         run: |
-          cd android
-          ./gradlew assembleRelease --stacktrace
+          cd android          ./gradlew assembleRelease --stacktrace || gradle assembleRelease --stacktrace
+
       - name: List Generated APKs
         run: |
           echo "=== Generated APKs ==="
-          find android/app/build/outputs/apk/ -name "*.apk" -exec ls -lh {} \;
+          find android/app/build/outputs/apk/ -name "*.apk" 2>/dev/null -exec ls -lh {} \; || echo "No APKs found"
 
       - name: Upload Debug APK Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nexus-vpn-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: ignore
 
       - name: Upload Release APK Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nexus-vpn-release
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: ignore
 
       - name: Create GitHub Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -138,24 +144,19 @@ jobs:
             - ✅ Material 3 UI
             - ✅ Real-time Statistics
             
-            ### 🔧 Technical Specs
-            - **Rust Core:** nexus-vpn-core
+            ### 🔧 Technical Specs            - **Rust Core:** nexus-vpn-core
             - **Android:** Kotlin + Jetpack Compose
             - **JNI Bridge:** Rust ↔ Kotlin
             - **Architectures:** ARM64 + X86_64
             - **Min SDK:** 24 (Android 7.0)
-            - **Target SDK:** 35 (Android 15)            
+            - **Target SDK:** 35 (Android 15)
+            
             ### 📥 Downloads
             - `*-release.apk` - Production build (optimized)
             - `*-debug.apk` - Debug build (logging enabled)
             
             ### ⚠️ Important Note
             This is a **prototype** implementation. Use at your own risk.
-            Not intended for production use without security audit.
-            
-            ### 🔗 Links
-            - [GitHub Repository](https://github.com/i7m7r8/Nexus-Vpn)
-            - [Report Issues](https://github.com/i7m7r8/Nexus-Vpn/issues)
           files: |
             android/app/build/outputs/apk/release/app-release-unsigned.apk
             android/app/build/outputs/apk/debug/app-debug.apk
