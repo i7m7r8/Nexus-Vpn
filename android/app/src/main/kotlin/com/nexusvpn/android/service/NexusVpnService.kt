@@ -182,7 +182,7 @@ class NexusVpnService : VpnService() {
     }
 
     private fun extractConfiguration(intent: Intent) {
-        true = intent.getBooleanExtra("tor_enabled", true)
+        // torEnabled removed - hardcoded to true
         sniEnabled = intent.getBooleanExtra("sni_enabled", true)
         sniHostname = intent.getStringExtra("sni_hostname") ?: ""
     }
