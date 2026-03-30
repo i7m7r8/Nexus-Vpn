@@ -1,72 +1,58 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
     namespace 'com.nexusvpn.android'
-    compileSdk 35
+    compileSdk 34
 
     defaultConfig {
-        applicationId 'com.nexusvpn.android'
-        minSdk 24
-        targetSdk 35
+        applicationId "com.nexusvpn.android"
+        minSdk 26
+        targetSdk 34
         versionCode 1
-        versionName '1.0.0'
+        versionName "2.0.0"
     }
 
     buildTypes {
         release {
-            minifyEnabled true
+            minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
-
+    kotlinOptions {
+        jvmTarget = '17'
+    }
     buildFeatures {
         compose true
     }
-
-    sourceSets {
-        main {
-            jniLibs.srcDirs = ['src/main/jniLibs']
-        }
-    }
-
-    packaging {
-        jniLibs {
-            pickFirsts += ['lib/**/libnexus_vpn_core.so']
-            useLegacyPackaging = false
-        }
+    composeOptions {
+        kotlinCompilerExtensionVersion '1.5.4'
     }
 }
 
 dependencies {
+    // AndroidX Core
     implementation 'androidx.core:core-ktx:1.15.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.0'
     implementation 'androidx.activity:activity-compose:1.10.0'
+    
+    // Jetpack Compose
     implementation platform('androidx.compose:compose-bom:2025.12.00')
     implementation 'androidx.compose.ui:ui'
     implementation 'androidx.compose.ui:ui-graphics'
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.material:material-icons-extended'
-}
-
-// ════════════════════════════════════════════════════════════
-// TOR ANDROID LIBRARY
-// ════════════════════════════════════════════════════════════
-dependencies {
-    // Official Tor Android Library
-    implementation 'org.torproject:tor-android:1.2.0'
     
-    // SNI Proxy (we'll implement or use existing)
-    // For now, we'll build our own TLS modifier
+    // Navigation
+    implementation 'androidx.navigation:navigation-compose:2.7.6'
     
-    // Additional networking
-    implementation 'com.github shadowsocks:shadowsocks-libev:latest'
+    // Coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }
