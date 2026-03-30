@@ -34,7 +34,8 @@ class VpnMonitoringService : Service() {
 
     private var isMonitoring = AtomicBoolean(false)
     private var isConnected = AtomicBoolean(false)
-    private var sniHealthy = AtomicBoolean(false)    private var torHealthy = AtomicBoolean(false)
+    private var sniHealthy = AtomicBoolean(false)
+    private var torHealthy = AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var healthCheckJob: Job? = null
     private val binder = LocalBinder()

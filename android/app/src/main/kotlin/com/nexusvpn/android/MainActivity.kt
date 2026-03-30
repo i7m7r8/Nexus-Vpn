@@ -39,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DataUsage
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -94,7 +95,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.darkColorScheme
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -273,7 +273,8 @@ class MainActivity : ComponentActivity() {
                             ConnectionPhase.CONNECTING_SNI, ConnectionPhase.CONNECTING_TOR -> Color.White
                             else -> TextSecondary
                         }, modifier = Modifier.size(70.dp))
-                    }                    Spacer(modifier = Modifier.height(24.dp))
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
                     Text(connectionStatus, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = when (connectionPhase) {
                         ConnectionPhase.CONNECTED -> SuccessGreen
                         ConnectionPhase.CONNECTING_SNI, ConnectionPhase.CONNECTING_TOR -> ProtonOrange
@@ -387,7 +388,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun QuickStatCard(icon: ImageVector, label: String, value: String, color: Color) {
-        Card(modifier = Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(icon, label, tint = color, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.height(8.dp))
@@ -421,7 +422,8 @@ class MainActivity : ComponentActivity() {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(getAvailableServers()) { server ->
                     ServerListItem(server, currentServer?.id == server.id) {
-                        currentServer = server                        savePreferences()
+                        currentServer = server
+                        savePreferences()
                         currentScreen = Screen.HOME
                     }
                 }
@@ -454,7 +456,7 @@ class MainActivity : ComponentActivity() {
     private fun StatisticsScreen() {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text("Statistics", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
-            StatCard("Download Speed", connectionStats.downloadSpeed, Icons.Default.Download, ProtonPurple)
+            StatCard("Download Speed", connectionStats.downloadSpeed, Icons.Default.DataUsage, ProtonPurple)
             Spacer(modifier = Modifier.height(12.dp))
             StatCard("Upload Speed", connectionStats.uploadSpeed, Icons.Default.Cloud, ProtonOrange)
             Spacer(modifier = Modifier.height(12.dp))
@@ -568,7 +570,8 @@ class MainActivity : ComponentActivity() {
     private fun connectVpn() {
         vpnConnecting = true
         connectionPhase = ConnectionPhase.CONNECTING_SNI
-        connectionStatus = "Requesting VPN Permission..."        val vpnIntent = VpnService.prepare(this)
+        connectionStatus = "Requesting VPN Permission..."
+        val vpnIntent = VpnService.prepare(this)
         if (vpnIntent != null) vpnPermissionLauncher.launch(vpnIntent) else startVpnConnection()
     }
 

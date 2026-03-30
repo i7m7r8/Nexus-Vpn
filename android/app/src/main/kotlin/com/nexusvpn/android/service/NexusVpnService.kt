@@ -186,7 +186,8 @@ class NexusVpnService : VpnService() {
 
     private fun scheduleReconnect() {
         serviceScope.launch {
-            delay(5000)            if (!isConnected.get()) Log.d(TAG, "Attempting auto-reconnect")
+            delay(5000)
+            if (!isConnected.get()) Log.d(TAG, "Attempting auto-reconnect")
         }
     }
 
