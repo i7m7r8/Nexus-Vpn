@@ -69,7 +69,7 @@ use tokio_rustls::TlsConnector;
 
 // Arti Tor Client (v0.40)
 use arti_client::TorClient;
-use arti_client::config::Config as ArtiConfig;
+// use arti_client::config::Config as ArtiConfig;  // Not in Arti v0.40
 use tor_rtcompat::PreferredRuntime;
 
 // Serialization
@@ -1198,7 +1198,7 @@ impl TorManager {
         info!("Starting Tor client with Arti v0.40...");
 
         let client = TorClient::builder()
-            .config(ArtiConfig::default())
+            .configure_config(|_cfg| {})
             .create_bootstrapped()
             .await
             .map_err(|e| format!("Arti bootstrap failed: {}", e))?;
