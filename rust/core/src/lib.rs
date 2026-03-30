@@ -2361,7 +2361,6 @@ mod tests {
         assert_eq!(get_codename(), NEXUS_CODENAME);
     }
 }
-}
 
 // ============================================================================
 // END OF NEXUS VPN CORE ENGINE
