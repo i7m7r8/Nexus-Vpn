@@ -509,7 +509,7 @@ class MainActivity : ComponentActivity() {
             }
             Spacer(modifier = Modifier.height(12.dp))
             androidx.compose.foundation.lazy.LazyColumn(
-                modifier = Modifier.fillMaxSize().weight(1f),
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = androidx.compose.foundation.lazy.Arrangement.spacedBy(4.dp)
             ) {
                 items(logList.reversed()) { log ->

@@ -23,7 +23,7 @@ class SniProxyService(private val context: Context) {
     private var isRunning = AtomicBoolean(false)
     private var sniHostname: String = ""
     private var serverThread: Thread? = null
-    private val logCallback: ((String) -> Unit)? = null
+    // logCallback removed
 
     /**
      * Start SNI proxy service
@@ -40,7 +40,7 @@ class SniProxyService(private val context: Context) {
             
             Log.d(TAG, "🔷 SNI Proxy started")
             Log.d(TAG, "📝 SNI Hostname: $sniHostname")
-            logCallback?.invoke("🔷 SNI Proxy: $sniHostname")
+            Log.d(TAG, "🔷 SNI Proxy: $sniHostname")
             
             // Start proxy server thread
             serverThread = Thread {
@@ -52,7 +52,7 @@ class SniProxyService(private val context: Context) {
 
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to start SNI Proxy", e)
-            logCallback?.invoke("❌ SNI error: ${e.message}")
+            Log.d(TAG, "❌ SNI error: ${e.message}")
             isRunning.set(false)
             return false
         }
@@ -67,7 +67,7 @@ class SniProxyService(private val context: Context) {
             serverSocket.configureBlocking(true)
             
             Log.d(TAG, "✅ SNI Proxy listening on 127.0.0.1:$PROXY_PORT")
-            logCallback?.invoke("✅ SNI listening on port $PROXY_PORT")
+            Log.d(TAG, "✅ SNI listening on port $PROXY_PORT")
             
             while (isRunning.get()) {
                 try {
@@ -85,7 +85,7 @@ class SniProxyService(private val context: Context) {
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ SNI Proxy server error", e)
-            logCallback?.invoke("❌ SNI server error")
+            Log.d(TAG, "❌ SNI server error")
         }
     }
 
@@ -108,13 +108,13 @@ class SniProxyService(private val context: Context) {
                     buffer.get() == 0x03.toByte() && // TLS Version Major
                     buffer.get() <= 0x03.toByte()    // TLS Version Minor
                 ) {
-                    Log.d(TAG, "🔐 TLS Client Hello detected")                    logCallback?.invoke("🔐 TLS handshake detected")
+                    Log.d(TAG, "🔐 TLS Client Hello detected")                    Log.d(TAG, "🔐 TLS handshake detected")
                     
                     // Modify SNI hostname in Client Hello
                     val modifiedBuffer = modifySniHostname(buffer, sniHostname)
                     
                     Log.d(TAG, "✅ SNI hostname modified to: $sniHostname")
-                    logCallback?.invoke("✅ SNI spoofed: $sniHostname")
+                    Log.d(TAG, "✅ SNI spoofed: $sniHostname")
                     
                     // In production: forward to actual destination
                     // For now, log the modification
@@ -123,7 +123,7 @@ class SniProxyService(private val context: Context) {
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error handling SNI client", e)
-            logCallback?.invoke("❌ SNI client error")
+            Log.d(TAG, "❌ SNI client error")
         } finally {
             try { client.close() } catch (e: Exception) {}
         }
@@ -161,7 +161,7 @@ class SniProxyService(private val context: Context) {
             
             // Find existing SNI extension and replace hostname
             // This is simplified - production needs proper TLS parsing
-            Log.d(TAG, "📝 Modifying SNI to: $newHostname")
+            Log.d(TAG, "Modifying SNI to: $newHostname")
             
             // For now, return original buffer (full TLS parsing is complex)
             // In production: use a proper TLS library
@@ -178,7 +178,7 @@ class SniProxyService(private val context: Context) {
      */
     fun stop() {
         Log.d(TAG, "⏹️ Stopping SNI Proxy")
-        logCallback?.invoke("⏹️ Stopping SNI")
+        Log.d(TAG, "⏹️ Stopping SNI")
         isRunning.set(false)
         serverThread?.interrupt()
         serverThread = null
