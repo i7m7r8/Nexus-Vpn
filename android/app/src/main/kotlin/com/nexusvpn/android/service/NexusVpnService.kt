@@ -17,7 +17,8 @@ import android.net.VpnService
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
-import android.os.IBinderimport android.os.Looper
+import android.os.IBinder
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.core.app.NotificationCompat
