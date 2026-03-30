@@ -588,7 +588,8 @@ pub enum Stream {
 // ======================== ENCRYPTION ENGINE =================================
 // ============================================================================
 
-/// High-performance encryption engine supporting multiple cipherspub struct EncryptionEngine {
+/// Comment
+    pub struct EncryptionEngine {
     /// ChaCha20-Poly1305 key
     chacha_key: Key,
     /// XChaCha20-Poly1305 key
