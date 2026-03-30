@@ -15,7 +15,13 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.nexusvpn.android.MainActivity
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -35,8 +41,7 @@ class NexusVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var isConnected = AtomicBoolean(false)
     private var isConnecting = AtomicBoolean(false)
-    private var torService: TorService? = null
-    private var sniProxyService: SniProxyService? = null
+    private var torService: TorService? = null    private var sniProxyService: SniProxyService? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var vpnThreadJob: Job? = null
     private val logQueue = ConcurrentLinkedQueue<String>()
@@ -46,7 +51,8 @@ class NexusVpnService : VpnService() {
         createNotificationChannel()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {        when (intent?.action) {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
             "CONNECT" -> connectVpn()
             "DISCONNECT" -> disconnectVpn()
         }
@@ -54,48 +60,50 @@ class NexusVpnService : VpnService() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onDestroy() { disconnectVpn(); serviceScope.cancel(); super.onDestroy() }
+
+    override fun onDestroy() {
+        disconnectVpn()
+        serviceScope.cancel()
+        super.onDestroy()
+    }
 
     private fun connectVpn() {
         if (isConnecting.get() || isConnected.get()) return
+        
         serviceScope.launch {
             try {
                 isConnecting.set(true)
-                addLog("🔷 Starting Nexus VPN")
+                addLog("Starting Nexus VPN")
 
-                // Step 1: Create VPN interface
-                addLog("📡 Step 1/3: Establishing VPN interface")
+                addLog("Step 1/3: Establishing VPN interface")
                 if (!setupVpnInterface()) {
-                    addLog("❌ VPN interface creation failed")
-                    return@launch
+                    addLog("VPN interface creation failed")
+                    return
                 }
-                addLog("✅ VPN interface: fd=${vpnInterface?.fileDescriptor?.fd}")
+                addLog("VPN interface established")
 
-                // Step 2: Start SNI Proxy
-                addLog("🔐 Step 2/3: Starting SNI Proxy")
+                addLog("Step 2/3: Starting SNI Proxy")
                 sniProxyService = SniProxyService()
-                sniProxyService?.setLogCallback { msg -> addLog("   $msg") }
+                sniProxyService?.setLogCallback { msg -> addLog("SNI: $msg") }
                 sniProxyService?.start("www.cloudflare.com")
-                addLog("✅ SNI Proxy active on 127.0.0.1:$SNI_PORT")
+                addLog("SNI Proxy active on port $SNI_PORT")
 
-                // Step 3: Start Tor
-                addLog("🧅 Step 3/3: Starting Tor")
+                addLog("Step 3/3: Starting Tor")
                 torService = TorService(this@NexusVpnService)
-                torService?.setLogCallback { msg -> addLog("   $msg") }
-                torService?.start()
-                addLog("✅ Tor SOCKS5: 127.0.0.1:$TOR_PORT")
+                torService?.setLogCallback { msg -> addLog("Tor: $msg") }                torService?.start()
+                addLog("Tor SOCKS5: port $TOR_PORT")
 
-                // Start packet routing
-                addLog("🔄 Starting packet routing")
+                addLog("Starting packet routing")
                 startPacketRouting()
 
                 isConnected.set(true)
-                addLog("✅ SNI → Tor chain ACTIVE!")
-                addLog("🔒 All traffic anonymized through Tor")
+                addLog("SNI to Tor chain ACTIVE")
+                addLog("All traffic anonymized through Tor")
                 startForegroundService()
 
             } catch (e: Exception) {
-                addLog("❌ Error: ${e.localizedMessage}")                Log.e(TAG, "Connect error", e)
+                addLog("Error: " + e.localizedMessage)
+                Log.e(TAG, "Connect error", e)
             } finally {
                 isConnecting.set(false)
             }
@@ -121,8 +129,8 @@ class NexusVpnService : VpnService() {
                 val vpnFd = vpnInterface?.fileDescriptor ?: return@launch
                 val vpnInput = FileInputStream(vpnFd)
                 val vpnOutput = FileOutputStream(vpnFd)
-                addLog("📥 VPN input: fd=${vpnFd.fd}")
-                addLog("📤 VPN output: fd=${vpnFd.fd}")
+                addLog("VPN input ready")
+                addLog("VPN output ready")
 
                 val buffer = ByteArray(VPN_MTU)
                 var packetNum = 0
@@ -131,34 +139,40 @@ class NexusVpnService : VpnService() {
 
                 while (isConnected.get()) {
                     try {
-                        val bytesRead = vpnInput.read(buffer)
-                        if (bytesRead > 0) {
+                        val bytesRead = vpnInput.read(buffer)                        if (bytesRead > 0) {
                             packetNum++
                             if (bytesRead >= 20) {
                                 val protocol = buffer[9].toInt() and 0xFF
                                 when (protocol) {
-                                    6 -> { tcpCount++; if (packetNum <= 20) addLog("📦 Pkt#$packetNum: TCP ${bytesRead}B → SNI→Tor") }
-                                    17 -> { udpCount++; if (packetNum <= 20) addLog("📦 Pkt#$packetNum: UDP ${bytesRead}B → Tor") }
-                                    1 -> if (packetNum <= 20) addLog("📦 Pkt#$packetNum: ICMP ${bytesRead}B") }
+                                    6 -> { 
+                                        tcpCount++
+                                        if (packetNum <= 20) addLog("Packet $packetNum: TCP ${bytesRead}B")
+                                    }
+                                    17 -> { 
+                                        udpCount++
+                                        if (packetNum <= 20) addLog("Packet $packetNum: UDP ${bytesRead}B")
+                                    }
+                                    1 -> if (packetNum <= 20) addLog("Packet $packetNum: ICMP ${bytesRead}B")
                                 }
                                 if (packetNum > 20 && packetNum % 100 == 0) {
-                                    addLog("📊 Processed $packetNum packets (TCP:$tcpCount UDP:$udpCount)")
+                                    addLog("Processed $packetNum packets (TCP:$tcpCount UDP:$udpCount)")
                                 }
-                                vpnOutput.write(buffer, 0, bytesRead)                            }
+                                vpnOutput.write(buffer, 0, bytesRead)
+                            }
                         }
                     } catch (e: Exception) {
                         if (isConnected.get()) Log.e(TAG, "Packet error", e)
                     }
                 }
             } catch (e: Exception) {
-                addLog("❌ Packet routing error: ${e.localizedMessage}")
+                addLog("Packet routing error: " + e.localizedMessage)
             }
         }
     }
 
     private fun disconnectVpn() {
         serviceScope.launch {
-            addLog("⏹️ Disconnecting...")
+            addLog("Disconnecting")
             vpnThreadJob?.cancel()
             sniProxyService?.stop()
             torService?.stop()
@@ -167,37 +181,60 @@ class NexusVpnService : VpnService() {
             vpnInterface?.close()
             vpnInterface = null
             stopForegroundService()
-            addLog("✅ Disconnected")
+            addLog("Disconnected")
         }
     }
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, "Nexus VPN", NotificationManager.IMPORTANCE_LOW)
+        val channel = NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            "Nexus VPN",            NotificationManager.IMPORTANCE_LOW
+        )
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun startForegroundService() {
-        val notification = createNotification("Connected", "SNI → Tor Active")
+        val notification = createNotification("Connected", "SNI to Tor Active")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else { startForeground(NOTIFICATION_ID, notification) }
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
-    private fun stopForegroundService() { stopForeground(STOP_FOREGROUND_REMOVE) }
+    private fun stopForegroundService() {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+    }
 
     private fun createNotification(title: String, message: String): Notification {
-        val intent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val intent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle(title).setContentText(message)
-            .setSmallIcon(android.R.drawable.ic_lock_lock).setContentIntent(intent)
-            .setOngoing(true).build()
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentIntent(intent)
+            .setOngoing(true)
+            .build()
     }
 
-    fun addLog(message: String) {        val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+    fun addLog(message: String) {
+        val ts = java.text.SimpleDateFormat(
+            "HH:mm:ss",
+            java.util.Locale.getDefault()
+        ).format(java.util.Date())
         logQueue.offer("[$ts] $message")
         Log.d(TAG, message)
         while (logQueue.size > 100) logQueue.poll()
     }
 
-    fun getLogs(): List<String> = logQueue.toList()
-}
+    fun getLogs(): List<String> = logQueue.toList()}

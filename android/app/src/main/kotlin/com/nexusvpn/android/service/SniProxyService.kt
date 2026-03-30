@@ -1,7 +1,11 @@
 package com.nexusvpn.android.service
 
 import android.util.Log
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
@@ -34,12 +38,12 @@ class SniProxyService {
         return try {
             serverSocket = ServerSocket()
             serverSocket!!.reuseAddress = true
-            serverSocket!!.bind(InetSocketAddress("127.0.0.1", PROXY_PORT))
-            isRunning.set(true)
+            serverSocket!!.bind(InetSocketAddress("127.0.0.1", PROXY_PORT))            isRunning.set(true)
             scope.launch { acceptLoop() }
-            log("✅ SNI Proxy started on port $PROXY_PORT, SNI=$sniHostname")
+            log("SNI Proxy started on port $PROXY_PORT")
             true
-        } catch (e: Exception) {            log("❌ SNI Proxy failed: ${e.message}")
+        } catch (e: Exception) {
+            log("SNI Proxy failed: " + e.message)
             false
         }
     }
@@ -48,7 +52,7 @@ class SniProxyService {
         while (isRunning.get()) {
             try {
                 val client = withContext(Dispatchers.IO) { serverSocket!!.accept() }
-                log("📥 SNI: Connection from ${client.remoteSocketAddress}")
+                log("SNI: New connection")
                 scope.launch { handleClient(client) }
             } catch (e: Exception) {
                 if (isRunning.get()) Log.e(TAG, "Accept error", e)
@@ -68,41 +72,42 @@ class SniProxyService {
 
                 val headerStr = String(data, Charsets.ISO_8859_1)
                 if (headerStr.startsWith("CONNECT ")) {
-                    handleHttpConnect(clientSock, clientIn, clientOut, headerStr, data)
+                    handleHttpConnect(clientSock, clientIn, clientOut, headerStr)
                 } else if (data[0] == 0x16.toByte()) {
-                    log("🔐 SNI: TLS ClientHello detected")
+                    log("SNI: TLS ClientHello detected")
                     handleDirectTls(clientSock, clientIn, clientOut, data)
                 } else {
-                    log("📄 SNI: Plain traffic (${data.size} bytes)")
-                    handlePlain(clientIn, clientOut, data)
+                    log("SNI: Plain traffic")
                 }
             }
         } catch (e: Exception) {
-            log("❌ SNI client error: ${e.message}")
+            log("SNI client error: " + e.message)
         }
     }
 
     private fun handleHttpConnect(
-        client: Socket, clientIn: InputStream, clientOut: OutputStream,
-        header: String, data: ByteArray
+        client: Socket,
+        clientIn: InputStream,        clientOut: OutputStream,
+        header: String
     ) {
         val line = header.lines().firstOrNull() ?: return
         val parts = line.split(" ")
-        if (parts.size < 2) return        val hostPort = parts[1].split(":")
+        if (parts.size < 2) return
+        val hostPort = parts[1].split(":")
         val destHost = hostPort[0]
         val destPort = hostPort.getOrNull(1)?.toIntOrNull() ?: 443
-        log("🔗 CONNECT $destHost:$destPort via Tor")
+        log("CONNECT $destHost:$destPort via Tor")
 
         val torSocket = connectViaTorSocks5(destHost, destPort) ?: run {
             clientOut.write("HTTP/1.1 503 Service Unavailable\r\n\r\n".toByteArray())
-            log("❌ Tor connection failed")
+            log("Tor connection failed")
             return
         }
 
         torSocket.use { tor ->
             clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
             clientOut.flush()
-            log("✅ Tunnel established to $destHost:$destPort")
+            log("Tunnel established")
 
             var firstTlsPacket = true
             val torOut = tor.getOutputStream()
@@ -119,74 +124,82 @@ class SniProxyService {
                             firstTlsPacket = false
                             val rewritten = rewriteSni(chunk)
                             torOut.write(rewritten)
-                            log("📝 SNI rewritten in CONNECT tunnel")
+                            log("SNI rewritten")
                         } else {
                             torOut.write(chunk)
                         }
                         torOut.flush()
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.d(TAG, "Relay error", e)
+                }
             }
 
             try {
-                val buf = ByteArray(BUFFER_SIZE)
-                while (true) {
+                val buf = ByteArray(BUFFER_SIZE)                while (true) {
                     val n = torIn.read(buf)
                     if (n <= 0) break
                     clientOut.write(buf, 0, n)
                     clientOut.flush()
                 }
-            } catch (_: Exception) {}
-            relayJob.cancel()        }
+            } catch (e: Exception) {
+                Log.d(TAG, "Return relay error", e)
+            }
+            relayJob.cancel()
+        }
     }
 
     private fun handleDirectTls(
-        client: Socket, clientIn: InputStream, clientOut: OutputStream,
+        client: Socket,
+        clientIn: InputStream,
+        clientOut: OutputStream,
         firstPacket: ByteArray
     ) {
         val origSni = extractSni(firstPacket) ?: sniHostname
-        val destHost = origSni
-        val destPort = 443
-        log("🔐 Direct TLS to $destHost, spoofing SNI=$sniHostname")
+        log("Direct TLS to $origSni, spoofing SNI=$sniHostname")
 
-        val torSocket = connectViaTorSocks5(destHost, destPort) ?: return
+        val torSocket = connectViaTorSocks5(origSni, 443) ?: return
         torSocket.use { tor ->
             val torOut = tor.getOutputStream()
             val torIn = tor.getInputStream()
             val rewritten = rewriteSni(firstPacket)
             torOut.write(rewritten)
             torOut.flush()
-            log("✅ SNI rewritten, forwarding through Tor")
+            log("SNI rewritten, forwarding through Tor")
 
             val relayJob = CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val buf = ByteArray(BUFFER_SIZE)
                     while (true) {
-                        val n = clientIn.read(buf); if (n <= 0) break
-                        torOut.write(buf, 0, n); torOut.flush()
+                        val n = clientIn.read(buf)
+                        if (n <= 0) break
+                        torOut.write(buf, 0, n)
+                        torOut.flush()
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.d(TAG, "Direct TLS relay error", e)
+                }
             }
             try {
                 val buf = ByteArray(BUFFER_SIZE)
                 while (true) {
-                    val n = torIn.read(buf); if (n <= 0) break
-                    clientOut.write(buf, 0, n); clientOut.flush()
+                    val n = torIn.read(buf)
+                    if (n <= 0) break
+                    clientOut.write(buf, 0, n)                    clientOut.flush()
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.d(TAG, "Direct TLS return error", e)
+            }
             relayJob.cancel()
         }
-    }
-
-    private fun handlePlain(clientIn: InputStream, clientOut: OutputStream, first: ByteArray) {
-        log("⚠️ Plain HTTP - use HTTPS for SNI proxying")
     }
 
     private fun connectViaTorSocks5(host: String, port: Int): Socket? {
         return try {
             val sock = Socket()
             sock.connect(InetSocketAddress(TOR_SOCKS_HOST, TOR_SOCKS_PORT), 5000)
-            sock.soTimeout = 30000            val out = sock.getOutputStream()
+            sock.soTimeout = 30000
+            val out = sock.getOutputStream()
             val inp = sock.getInputStream()
 
             out.write(byteArrayOf(0x05, 0x01, 0x00))
@@ -194,8 +207,9 @@ class SniProxyService {
             val resp = ByteArray(2)
             inp.read(resp)
             if (resp[0] != 0x05.toByte() || resp[1] != 0x00.toByte()) {
-                log("❌ SOCKS5 auth failed")
-                sock.close(); return null
+                log("SOCKS5 auth failed")
+                sock.close()
+                return null
             }
 
             val hostBytes = host.toByteArray(Charsets.US_ASCII)
@@ -208,19 +222,20 @@ class SniProxyService {
             hostBytes.copyInto(req, 5)
             req[5 + hostBytes.size] = (port shr 8).toByte()
             req[6 + hostBytes.size] = (port and 0xFF).toByte()
-            out.write(req); out.flush()
+            out.write(req)
+            out.flush()
 
             val connResp = ByteArray(10)
             inp.read(connResp)
             if (connResp[1] != 0x00.toByte()) {
-                log("❌ SOCKS5 connect failed: code=${connResp[1]}")
-                sock.close(); return null
+                log("SOCKS5 connect failed")
+                sock.close()
+                return null
             }
 
-            log("✅ Tor connected to $host:$port")
-            sock
-        } catch (e: Exception) {
-            log("❌ Tor connection failed: ${e.message}")
+            log("Tor connected to $host:$port")
+            sock        } catch (e: Exception) {
+            log("Tor connection failed: " + e.message)
             null
         }
     }
@@ -235,12 +250,13 @@ class SniProxyService {
             val idx = findSniOffset(data, oldSniBytes) ?: return data
             val result = ByteArray(data.size + diff)
             data.copyInto(result, 0, 0, idx)
-            newSniBytes.copyInto(result, idx)            data.copyInto(result, idx + newSniBytes.size, idx + oldSniBytes.size)
+            newSniBytes.copyInto(result, idx)
+            data.copyInto(result, idx + newSniBytes.size, idx + oldSniBytes.size)
             patchLengths(result, diff)
-            log("📝 SNI: $orig → $sniHostname")
+            log("SNI: $orig to $sniHostname")
             return result
         } catch (e: Exception) {
-            log("❌ SNI rewrite error: ${e.message}")
+            log("SNI rewrite error: " + e.message)
             return data
         }
     }
@@ -267,8 +283,7 @@ class SniProxyService {
                 val extType = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos+1].toInt() and 0xFF)
                 val extLen = ((data[pos+2].toInt() and 0xFF) shl 8) or (data[pos+3].toInt() and 0xFF)
                 pos += 4
-                if (extType == 0x0000) {
-                    pos += 2
+                if (extType == 0x0000) {                    pos += 2
                     pos += 1
                     val nameLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos+1].toInt() and 0xFF)
                     pos += 2
@@ -276,7 +291,9 @@ class SniProxyService {
                 }
                 pos += extLen
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.d(TAG, "SNI extract error", e)
+        }
         return null
     }
 
@@ -284,7 +301,8 @@ class SniProxyService {
         outer@ for (i in 0..data.size - sniBytes.size) {
             for (j in sniBytes.indices) {
                 if (data[i + j] != sniBytes[j]) continue@outer
-            }            return i
+            }
+            return i
         }
         return null
     }
@@ -304,9 +322,9 @@ class SniProxyService {
 
     fun stop() {
         isRunning.set(false)
-        try { serverSocket?.close() } catch (_: Exception) {}
+        try { serverSocket?.close() } catch (e: Exception) { Log.d(TAG, "Close error", e) }
         scope.cancel()
-        log("⏹️ SNI Proxy stopped")
+        log("SNI Proxy stopped")
     }
 
     fun isRunning(): Boolean = isRunning.get()
@@ -314,6 +332,5 @@ class SniProxyService {
 
     private fun log(msg: String) {
         Log.d(TAG, msg)
-        logCallback?.invoke(msg)
-    }
+        logCallback?.invoke(msg)    }
 }
