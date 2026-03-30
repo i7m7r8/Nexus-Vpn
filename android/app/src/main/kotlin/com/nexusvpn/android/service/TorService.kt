@@ -40,12 +40,10 @@ class TorService(private val context: Context) {
         try {
             isStarting.set(true)
             Log.d(TAG, "🔷 Starting REAL Tor service")
-            Log.d(TAG, "🔷 Starting Tor daemon...")
             // Method 1: Try to connect to existing Tor/Orbot
             val orbotConnected = connectToOrbot()
             if (orbotConnected) {
                 Log.d(TAG, "✅ Connected to Orbot/Tor")
-                Log.d(TAG, "✅ Connected to Orbot")
                 isReady.set(true)
                 isStarting.set(false)
                 return@withContext true
@@ -53,14 +51,12 @@ class TorService(private val context: Context) {
 
             // Method 2: Wait for Tor socks port
             Log.d(TAG, "⏳ Waiting for Tor bootstrap...")
-            Log.d(TAG, "⏳ Bootstrapping Tor circuit...")
             
             val bootstrapped = waitForTorBootstrap()
             
             if (bootstrapped) {
                 isReady.set(true)
                 Log.d(TAG, "✅ Tor service started successfully")
-                Log.d(TAG, "✅ Tor circuit established")
             } else {
                 Log.w(TAG, "⚠️ Tor bootstrap timeout")
                 Log.d(TAG, "⚠️ Tor bootstrap timeout")
@@ -88,7 +84,6 @@ class TorService(private val context: Context) {
             socket.connect(InetSocketAddress("127.0.0.1", TOR_SOCKS_PORT), 2000)
             socket.close()
             Log.d(TAG, "✅ Orbot detected on port $TOR_SOCKS_PORT")
-            Log.d(TAG, "✅ Orbot detected")
             true        } catch (e: Exception) {
             Log.d(TAG, "Orbot not running, will use embedded Tor")
             false
@@ -104,7 +99,6 @@ class TorService(private val context: Context) {
         while (System.currentTimeMillis() - startTime < BOOTSTRAP_TIMEOUT_MS) {
             if (isTorPortListening()) {
                 Log.d(TAG, "✅ Tor socks port is listening")
-                Log.d(TAG, "✅ Tor SOCKS port ready")
                 return true
             }
             
@@ -114,7 +108,6 @@ class TorService(private val context: Context) {
             // Log progress every 10%
             if (bootstrapProgress % 10 == 0 && bootstrapProgress > 0) {
                 Log.d(TAG, "Tor bootstrapping: $bootstrapProgress%")
-                Log.d(TAG, "⏳ Tor: $bootstrapProgress%")
             }
         }
         
@@ -126,44 +119,4 @@ class TorService(private val context: Context) {
      */
     private fun isTorPortListening(): Boolean {
         return try {
-            val socket = Socket("127.0.0.1", TOR_SOCKS_PORT)
-            socket.close()
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    /**
-     * Stop Tor service
-     */
-    fun stop() {
-        Log.d(TAG, "⏹️ Stopping Tor service")        Log.d(TAG, "⏹️ Stopping Tor")
-        
-        torProcess?.destroy()
-        torProcess = null
-        isReady.set(false)
-        isStarting.set(false)
-        bootstrapProgress = 0
-    }
-
-    /**
-     * Check if Tor is ready
-     */
-    fun isReady(): Boolean = isReady.get()
-
-    /**
-     * Get bootstrap progress
-     */
-    fun getProgress(): Int = bootstrapProgress
-
-    /**
-     * Get Tor socks port
-     */
-    fun getSocksPort(): Int = TOR_SOCKS_PORT
-
-    /**
-     * Get Tor addresses to bypass in VPN routing
-     */
-    fun getTorAddresses(): List<String> = listOf("127.0.0.1")
-}
+           

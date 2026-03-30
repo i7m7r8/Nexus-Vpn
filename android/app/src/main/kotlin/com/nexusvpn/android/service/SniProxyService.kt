@@ -38,7 +38,6 @@ class SniProxyService(private val context: Context) {
             isRunning.set(true)
             
             Log.d(TAG, "🔷 SNI Proxy started")
-            Log.d(TAG, "📝 SNI Hostname: $sniHostname")
             Log.d(TAG, "🔷 SNI Proxy: $sniHostname")
             
             // Start proxy server thread
@@ -66,7 +65,6 @@ class SniProxyService(private val context: Context) {
             serverSocket.configureBlocking(true)
             
             Log.d(TAG, "✅ SNI Proxy listening on 127.0.0.1:$PROXY_PORT")
-            Log.d(TAG, "✅ SNI listening on port $PROXY_PORT")
             
             while (isRunning.get()) {
                 try {
@@ -107,13 +105,12 @@ class SniProxyService(private val context: Context) {
                     buffer.get() == 0x03.toByte() && // TLS Version Major
                     buffer.get() <= 0x03.toByte()    // TLS Version Minor
                 ) {
-                    Log.d(TAG, "🔐 TLS Client Hello detected")                    Log.d(TAG, "🔐 TLS handshake detected")
+                    Log.d(TAG, "🔐 TLS Client Hello detected")
                     
                     // Modify SNI hostname in Client Hello
                     val modifiedBuffer = modifySniHostname(buffer, sniHostname)
                     
                     Log.d(TAG, "✅ SNI hostname modified to: $sniHostname")
-                    Log.d(TAG, "✅ SNI spoofed: $sniHostname")
                     
                     // In production: forward to actual destination
                     // For now, log the modification
@@ -177,7 +174,6 @@ class SniProxyService(private val context: Context) {
      */
     fun stop() {
         Log.d(TAG, "⏹️ Stopping SNI Proxy")
-        Log.d(TAG, "⏹️ Stopping SNI")
         isRunning.set(false)
         serverThread?.interrupt()
         serverThread = null
@@ -198,22 +194,4 @@ class SniProxyService(private val context: Context) {
      * Generate random SNI hostname for obfuscation
      */
     private fun generateRandomSni(): String {
-        val domains = listOf(
-            "cdn.cloudflare.com",
-            "www.microsoft.com",
-            "update.google.com",
-            "api.github.com",
-            "cdn.jsdelivr.net",
-            "assets.msn.com",
-            "www.apple.com",            "telemetry.microsoft.com"
-        )
-        return domains.random()
-    }
-
-    /**
-     * Set log callback for UI
-     */
-    fun setLogCallback(callback: (String) -> Unit) {
-        // Store callback for logging
-    }
-}
+       
