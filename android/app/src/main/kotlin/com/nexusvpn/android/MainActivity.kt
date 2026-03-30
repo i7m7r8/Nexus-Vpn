@@ -1,19 +1,3 @@
-// ============================================================================
-// NEXUS VPN - MainActivity
-// Masterplan Implementation: SNI → Tor Chain VPN
-// ============================================================================
-// Features:
-// - Jetpack Compose Material 3 UI
-// - Real-time SNI→Tor Chain Status
-// - Server Selection with Latency Monitoring
-// - SNI Hostname Configuration
-// - Tor Circuit Visualization
-// - Connection Statistics Dashboard
-// - Kill Switch Toggle
-// - DNS Leak Test
-// - Dark Theme (Proton VPN Style)
-// ============================================================================
-
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.nexusvpn.android
@@ -46,7 +30,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Rowimport androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -61,8 +46,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ArrowBackimport androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DataUsage
@@ -93,9 +77,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBoximport androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -104,21 +86,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ProgressIndicatorDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.Textimport androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
@@ -144,7 +121,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflowimport androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -166,8 +144,7 @@ val ProtonPurpleLight = Color(0xFF8B2BE2)
 val ProtonPurpleDark = Color(0xFF550099)
 val ProtonOrange = Color(0xFFFFA500)
 val ProtonOrangeLight = Color(0xFFFFB84D)
-val DarkBackground = Color(0xFF0A0A0A)
-val DarkSurface = Color(0xFF1A1A1A)
+val DarkBackground = Color(0xFF0A0A0A)val DarkSurface = Color(0xFF1A1A1A)
 val DarkSurfaceVariant = Color(0xFF2A2A2A)
 val DarkSurfaceVariantLight = Color(0xFF3A3A3A)
 val SuccessGreen = Color(0xFF00C853)
@@ -193,7 +170,8 @@ data class VpnServer(
     val load: Int,
     val isPremium: Boolean,
     val supportsTor: Boolean,
-    val supportsSni: Boolean)
+    val supportsSni: Boolean
+)
 
 data class ConnectionStats(
     val uploadSpeed: String,
@@ -215,12 +193,19 @@ data class TorCircuitInfo(
     val isHealthy: Boolean
 )
 
-enum class Screen {
-    HOME,
+enum class Screen {    HOME,
     SERVERS,
     STATISTICS,
     SETTINGS,
     ABOUT
+}
+
+enum class ConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTING,
+    ERROR
 }
 
 // ============================================================================
@@ -242,7 +227,8 @@ class MainActivity : ComponentActivity() {
     // VPN State
     private var vpnConnected by mutableStateOf(false)
     private var vpnConnecting by mutableStateOf(false)
-    private var connectionStatus by mutableStateOf("Not Connected")    private var connectionState by mutableStateOf(ConnectionState.DISCONNECTED)
+    private var connectionStatus by mutableStateOf("Not Connected")
+    private var connectionState by mutableStateOf(ConnectionState.DISCONNECTED)
 
     // Configuration
     private var currentServer by mutableStateOf<VpnServer?>(null)
@@ -256,8 +242,7 @@ class MainActivity : ComponentActivity() {
 
     // Statistics
     private var connectionStats by mutableStateOf(
-        ConnectionStats(
-            uploadSpeed = "0 Mbps",
+        ConnectionStats(            uploadSpeed = "0 Mbps",
             downloadSpeed = "0 Mbps",
             totalUpload = "0 MB",
             totalDownload = "0 MB",
@@ -291,7 +276,8 @@ class MainActivity : ComponentActivity() {
         } else {
             vpnConnected = false
             vpnConnecting = false
-            connectionStatus = "Permission Denied"            connectionState = ConnectionState.DISCONNECTED
+            connectionStatus = "Permission Denied"
+            connectionState = ConnectionState.DISCONNECTED
             showErrorDialog = true
             errorMessage = "VPN permission was denied. Cannot establish secure connection."
         }
@@ -306,7 +292,6 @@ class MainActivity : ComponentActivity() {
         initializeUI()
         startStatsUpdater()
     }
-
     private fun loadPreferences() {
         sniHostname = sharedPrefs.getString("sni_hostname", "") ?: ""
         torEnabled = sharedPrefs.getBoolean("tor_enabled", true)
@@ -340,7 +325,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun initializeUI() {
-        setContent {            NexusVpnTheme {
+        setContent {
+            NexusVpnTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = DarkBackground
@@ -354,8 +340,7 @@ class MainActivity : ComponentActivity() {
                                 onCloseDrawer = { }
                             )
                         }
-                    ) {
-                        NexusVpnScaffold()
+                    ) {                        NexusVpnScaffold()
                     }
                 }
             }
@@ -389,25 +374,14 @@ class MainActivity : ComponentActivity() {
                 )
             ),
             content = content
-        )    }
+        )
+    }
 
     @Composable
     private fun NexusVpnScaffold() {
         Scaffold(
             topBar = { TopAppBarContent() },
             bottomBar = { BottomNavigationBar() },
-            snackbarHost = {
-                SnackbarHost(
-                    hostState = remember { SnackbarHostState() }
-                ) { data ->
-                    Snackbar(
-                        snackbarData = data,
-                        containerColor = DarkSurfaceVariant,
-                        contentColor = TextPrimary,
-                        actionColor = ProtonOrange
-                    )
-                }
-            },
             floatingActionButton = {
                 if (currentScreen == Screen.HOME) {
                     QuickConnectFab()
@@ -415,8 +389,7 @@ class MainActivity : ComponentActivity() {
             }
         ) { paddingValues ->
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
+                modifier = Modifier                    .fillMaxSize()
                     .padding(paddingValues)
             ) {
                 ScreenContent()
@@ -438,7 +411,8 @@ class MainActivity : ComponentActivity() {
                         tint = ProtonPurple,
                         modifier = Modifier.size(28.dp)
                     )
-                    Text(                        text = "Nexus VPN",
+                    Text(
+                        text = "Nexus VPN",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -464,8 +438,7 @@ class MainActivity : ComponentActivity() {
                         contentDescription = "Settings",
                         tint = TextSecondary
                     )
-                }
-            }
+                }            }
         )
     }
 
@@ -487,7 +460,8 @@ class MainActivity : ComponentActivity() {
                 label = { Text("Home", fontSize = 12.sp) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = ProtonPurple,
-                    selectedTextColor = ProtonPurple,                    unselectedIconColor = TextSecondary,
+                    selectedTextColor = ProtonPurple,
+                    unselectedIconColor = TextSecondary,
                     unselectedTextColor = TextSecondary,
                     indicatorColor = ProtonPurple.copy(alpha = 0.2f)
                 )
@@ -513,8 +487,7 @@ class MainActivity : ComponentActivity() {
             NavigationBarItem(
                 selected = currentScreen == Screen.STATISTICS,
                 onClick = { currentScreen = Screen.STATISTICS },
-                icon = {
-                    BadgedBox(
+                icon = {                    BadgedBox(
                         badge = {
                             if (vpnConnected) {
                                 Badge(
@@ -536,7 +509,8 @@ class MainActivity : ComponentActivity() {
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = ProtonPurple,
                     selectedTextColor = ProtonPurple,
-                    unselectedIconColor = TextSecondary,                    unselectedTextColor = TextSecondary,
+                    unselectedIconColor = TextSecondary,
+                    unselectedTextColor = TextSecondary,
                     indicatorColor = ProtonPurple.copy(alpha = 0.2f)
                 )
             )
@@ -562,8 +536,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ScreenContent() {
-        when (currentScreen) {
+    private fun ScreenContent() {        when (currentScreen) {
             Screen.HOME -> HomeScreen()
             Screen.SERVERS -> ServerListScreen()
             Screen.STATISTICS -> StatisticsScreen()
@@ -571,7 +544,6 @@ class MainActivity : ComponentActivity() {
             Screen.ABOUT -> AboutScreen()
         }
 
-        // Error Dialog
         if (showErrorDialog) {
             ErrorDialog(
                 message = errorMessage,
@@ -579,13 +551,9 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        // SNI Editor Dialog
         if (showSniEditor) {
-            SniEditorDialog(
-                currentSni = sniHostname,
-                onSniChange = { sniHostname = it },
-                onDismiss = { showSniEditor = false }
-            )        }
+            SniEditorDialog()
+        }
     }
 
     @Composable
@@ -598,28 +566,14 @@ class MainActivity : ComponentActivity() {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Connection Status Card
             ConnectionStatusCard()
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // Quick Stats Row
             QuickStatsRow()
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // SNI → Tor Chain Info
             SniTorChainCard()
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // Current Server Card
             CurrentServerCard()
-
             Spacer(modifier = Modifier.height(24.dp))
-
-            // Security Features
             SecurityFeaturesCard()
         }
     }
@@ -631,14 +585,13 @@ class MainActivity : ComponentActivity() {
                 .fillMaxWidth()
                 .height(280.dp),
             colors = CardDefaults.cardColors(
-                containerColor = DarkSurface
-            ),
+                containerColor = DarkSurface            ),
             shape = RoundedCornerShape(24.dp)
-        ) {            Box(
+        ) {
+            Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                // Animated Background Gradient
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -663,7 +616,6 @@ class MainActivity : ComponentActivity() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    // Status Icon
                     Box(
                         modifier = Modifier
                             .size(120.dp)
@@ -682,8 +634,8 @@ class MainActivity : ComponentActivity() {
                         contentAlignment = Alignment.Center
                     ) {
                         if (vpnConnecting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(80.dp),                                color = ProtonOrange,
+                            CircularProgressIndicator(                                modifier = Modifier.size(80.dp),
+                                color = ProtonOrange,
                                 trackColor = DarkSurfaceVariant,
                                 strokeWidth = 4.dp
                             )
@@ -704,7 +656,6 @@ class MainActivity : ComponentActivity() {
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Status Text
                     Text(
                         text = connectionStatus,
                         fontSize = 20.sp,
@@ -718,10 +669,9 @@ class MainActivity : ComponentActivity() {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Subtitle
                     Text(
                         text = when {
-                            vpnConnected -> "SNI → Tor Chain Active"
+                            vpnConnected -> "SNI to Tor Chain Active"
                             vpnConnecting -> "Establishing Secure Connection..."
                             else -> "Tap to Connect"
                         },
@@ -731,10 +681,9 @@ class MainActivity : ComponentActivity() {
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Connect Button
-                    Button(                        onClick = { toggleVpn() },
-                        modifier = Modifier
-                            .width(200.dp)
+                    Button(
+                        onClick = { toggleVpn() },
+                        modifier = Modifier                            .width(200.dp)
                             .height(56.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = when {
@@ -781,9 +730,9 @@ class MainActivity : ComponentActivity() {
             )
             QuickStatCard(
                 icon = Icons.Default.DataUsage,
-                label = "Data",                value = connectionStats.totalDownload,
-                color = SuccessGreen
-            )
+                label = "Data",
+                value = connectionStats.totalDownload,
+                color = SuccessGreen            )
         }
     }
 
@@ -830,9 +779,9 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SniTorChainCard() {        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
+    private fun SniTorChainCard() {
+        Card(
+            modifier = Modifier.fillMaxWidth(),            colors = CardDefaults.cardColors(
                 containerColor = DarkSurfaceVariant
             ),
             shape = RoundedCornerShape(16.dp)
@@ -848,7 +797,7 @@ class MainActivity : ComponentActivity() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "SNI → Tor Chain",
+                        text = "SNI to Tor Chain",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -867,7 +816,6 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Chain Visualization
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -879,10 +827,10 @@ class MainActivity : ComponentActivity() {
                         isActive = vpnConnected
                     )
                     ChainArrow(isActive = vpnConnected)
-                    ChainNode(                        label = "SNI",
+                    ChainNode(
+                        label = "SNI",
                         icon = Icons.Default.Lock,
-                        isActive = vpnConnected && !sniHostname.isEmpty()
-                    )
+                        isActive = vpnConnected && sniHostname.isNotEmpty()                    )
                     ChainArrow(isActive = vpnConnected)
                     ChainNode(
                         label = "Tor",
@@ -899,7 +847,6 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // SNI Hostname Display
                 OutlinedTextField(
                     value = sniHostname.ifEmpty { "Auto (Randomized)" },
                     onValueChange = { },
@@ -923,17 +870,16 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Tor Toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
-                ) {                    Row(
+                ) {
+                    Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Security,
+                        Icon(                            imageVector = Icons.Default.Security,
                             contentDescription = "Tor",
                             tint = ProtonOrange,
                             modifier = Modifier.size(20.dp)
@@ -974,15 +920,15 @@ class MainActivity : ComponentActivity() {
                     .size(48.dp)
                     .clip(CircleShape)
                     .background(
-                        color = if (isActive) ProtonPurple else DarkSurfaceVariantLight
+                        color = if (isActive) ProtonPurple else DarkSurfaceVariant
                     ),
                 contentAlignment = Alignment.Center
-            ) {                Icon(
+            ) {
+                Icon(
                     imageVector = icon,
                     contentDescription = label,
                     tint = if (isActive) Color.White else TextTertiary,
-                    modifier = Modifier.size(24.dp)
-                )
+                    modifier = Modifier.size(24.dp)                )
             }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -1006,12 +952,13 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun CurrentServerCard() {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = { currentScreen = Screen.SERVERS }),
             colors = CardDefaults.cardColors(
                 containerColor = DarkSurfaceVariant
             ),
-            shape = RoundedCornerShape(16.dp),
-            onClick = { currentScreen = Screen.SERVERS }
+            shape = RoundedCornerShape(16.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -1026,11 +973,11 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Icon(
                         imageVector = Icons.Default.Public,
-                        contentDescription = "Server",                        tint = ProtonPurple,
+                        contentDescription = "Server",
+                        tint = ProtonPurple,
                         modifier = Modifier.size(28.dp)
                     )
-                    Column {
-                        Text(
+                    Column {                        Text(
                             text = "Current Server",
                             fontSize = 12.sp,
                             color = TextTertiary
@@ -1075,11 +1022,11 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SecurityFeatureRow(                    icon = Icons.Default.Shield,
+                SecurityFeatureRow(
+                    icon = Icons.Default.Shield,
                     label = "Kill Switch",
                     enabled = killSwitchEnabled,
-                    onToggle = {
-                        killSwitchEnabled = it
+                    onToggle = {                        killSwitchEnabled = it
                         savePreferences()
                     }
                 )
@@ -1124,11 +1071,11 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SecurityFeatureRow(        icon: ImageVector,
+    private fun SecurityFeatureRow(
+        icon: ImageVector,
         label: String,
         enabled: Boolean,
-        onToggle: (Boolean) -> Unit
-    ) {
+        onToggle: (Boolean) -> Unit    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1174,10 +1121,10 @@ class MainActivity : ComponentActivity() {
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
+
             Spacer(modifier = Modifier.height(16.dp))
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            LazyColumn(                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(getAvailableServers()) { server ->
                     ServerListItem(
@@ -1222,11 +1169,11 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Text(
                         text = server.flag,
-                        fontSize = 32.sp                    )
+                        fontSize = 32.sp
+                    )
                     Column {
                         Text(
-                            text = server.name,
-                            fontSize = 16.sp,
+                            text = server.name,                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
@@ -1271,12 +1218,11 @@ class MainActivity : ComponentActivity() {
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
+
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Live Stats
             StatCard(
-                title = "Download Speed",
-                value = connectionStats.downloadSpeed,
+                title = "Download Speed",                value = connectionStats.downloadSpeed,
                 icon = Icons.Default.Download,
                 color = ProtonPurple
             )
@@ -1320,12 +1266,11 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(12.dp))
 
             StatCard(
-                title = "Latency",                value = connectionStats.latency,
+                title = "Latency",
+                value = connectionStats.latency,
                 icon = Icons.Default.Speed,
                 color = ProtonOrange
             )
-
-            // Tor Circuit Info
             if (torEnabled && vpnConnected) {
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -1369,13 +1314,13 @@ class MainActivity : ComponentActivity() {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {                    Icon(
+                ) {
+                    Icon(
                         imageVector = icon,
                         contentDescription = title,
                         tint = color,
                         modifier = Modifier.size(32.dp)
-                    )
-                    Column {
+                    )                    Column {
                         Text(
                             text = title,
                             fontSize = 14.sp,
@@ -1418,13 +1363,13 @@ class MainActivity : ComponentActivity() {
                         color = TextPrimary
                     )
                     Badge(
-                        containerColor = if (circuit.isHealthy) SuccessGreen else WarningYellow,                        contentColor = TextPrimary
+                        containerColor = if (circuit.isHealthy) SuccessGreen else WarningYellow,
+                        contentColor = TextPrimary
                     ) {
                         Text(
                             text = if (circuit.isHealthy) "HEALTHY" else "UNSTABLE",
                             fontSize = 10.sp
-                        )
-                    }
+                        )                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1467,13 +1412,13 @@ class MainActivity : ComponentActivity() {
             Text(
                 text = node,
                 fontSize = 12.sp,
-                color = TextSecondary,                modifier = Modifier.weight(1f)
+                color = TextSecondary,
+                modifier = Modifier.weight(1f)
             )
         }
     }
 
-    @Composable
-    private fun SettingsScreen() {
+    @Composable    private fun SettingsScreen() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -1516,13 +1461,13 @@ class MainActivity : ComponentActivity() {
                 SettingsSwitch(
                     label = "Kill Switch",
                     description = "Block internet if VPN disconnects",
-                    checked = killSwitchEnabled,                    onCheckedChange = {
+                    checked = killSwitchEnabled,
+                    onCheckedChange = {
                         killSwitchEnabled = it
                         savePreferences()
                     }
                 )
-                SettingsSwitch(
-                    label = "DNS Leak Protection",
+                SettingsSwitch(                    label = "DNS Leak Protection",
                     description = "Prevent DNS leaks",
                     checked = dnsLeakProtection,
                     onCheckedChange = {
@@ -1544,32 +1489,38 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(24.dp))
 
             SettingsSection(title = "SNI Configuration") {
-                SettingsTextField(
-                    label = "SNI Hostname",
+                OutlinedTextField(
                     value = sniHostname,
                     onValueChange = { sniHostname = it },
-                    placeholder = "e.g., cdn.example.com"
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("SNI Hostname") },
+                    placeholder = { Text("e.g., cdn.example.com") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = ProtonPurple,
+                        unfocusedBorderColor = DividerColor
+                    )
                 )
-                SettingsButton(
-                    label = "Randomize SNI",
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
                     onClick = {
                         sniHostname = ""
                         savePreferences()
                         Toast.makeText(this@MainActivity, "SNI randomized", Toast.LENGTH_SHORT).show()
-                    }
-                )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, ProtonPurple),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = ProtonPurple
+                    )
+                ) {
+                    Text("Randomize SNI")
+                }
             }
-
             Spacer(modifier = Modifier.height(24.dp))
 
             SettingsSection(title = "About") {
-                SettingsInfoRow(
-                    label = "Version",
-                    value = "1.0.0"                )
-                SettingsInfoRow(
-                    label = "Build",
-                    value = "Masterplan Edition"
-                )
+                SettingsInfoRow(label = "Version", value = "1.0.0")
+                SettingsInfoRow(label = "Build", value = "Masterplan Edition")
             }
         }
     }
@@ -1638,42 +1589,6 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SettingsTextField(
-        label: String,
-        value: String,
-        onValueChange: (String) -> Unit,
-        placeholder: String
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(label) },
-            placeholder = { Text(placeholder) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = ProtonPurple,
-                unfocusedBorderColor = DividerColor
-            )
-        )
-    }
-
-    @Composable
-    private fun SettingsButton(
-        label: String,
-        onClick: () -> Unit
-    ) {
-        OutlinedButton(
-            onClick = onClick,            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(1.dp, ProtonPurple),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = ProtonPurple
-            )
-        ) {
-            Text(label)
-        }
-    }
-
-    @Composable
     private fun SettingsInfoRow(
         label: String,
         value: String
@@ -1699,8 +1614,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun AboutScreen() {
-        Column(
+    private fun AboutScreen() {        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
@@ -1712,6 +1626,7 @@ class MainActivity : ComponentActivity() {
                 tint = ProtonPurple,
                 modifier = Modifier.size(100.dp)
             )
+
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
@@ -1730,7 +1645,7 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "SNI → Tor Chain VPN",
+                text = "SNI to Tor Chain VPN",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
                 color = TextSecondary
@@ -1748,8 +1663,7 @@ class MainActivity : ComponentActivity() {
             Spacer(modifier = Modifier.height(48.dp))
 
             Text(
-                text = "Features:",
-                fontSize = 18.sp,
+                text = "Features:",                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
             )
@@ -1759,9 +1673,10 @@ class MainActivity : ComponentActivity() {
             listOf(
                 "SNI Obfuscation (TLS Client Hello Spoofing)",
                 "Tor Integration (Arti v0.40)",
-                "SNI → Tor Chain Routing",
+                "SNI to Tor Chain Routing",
                 "Kill Switch Protection",
-                "DNS Leak Protection",                "IPv6 Leak Protection",
+                "DNS Leak Protection",
+                "IPv6 Leak Protection",
                 "Auto Reconnect",
                 "Real-time Statistics"
             ).forEach { feature ->
@@ -1797,8 +1712,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun QuickConnectFab() {
-        FloatingActionButton(
+    private fun QuickConnectFab() {        FloatingActionButton(
             onClick = { toggleVpn() },
             containerColor = if (vpnConnected) ErrorRed else ProtonPurple,
             modifier = Modifier
@@ -1810,7 +1724,8 @@ class MainActivity : ComponentActivity() {
                 contentDescription = if (vpnConnected) "Disconnect" else "Connect",
                 modifier = Modifier.size(32.dp)
             )
-        }    }
+        }
+    }
 
     @Composable
     private fun NavigationDrawerContent(
@@ -1846,8 +1761,7 @@ class MainActivity : ComponentActivity() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            NavigationDrawerItem(
-                label = { Text("Home") },
+            NavigationDrawerItem(                label = { Text("Home") },
                 selected = currentScreen == Screen.HOME,
                 onClick = {
                     onScreenChange(Screen.HOME)
@@ -1860,6 +1774,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             )
+
             NavigationDrawerItem(
                 label = { Text("Servers") },
                 selected = currentScreen == Screen.SERVERS,
@@ -1895,8 +1810,7 @@ class MainActivity : ComponentActivity() {
                 selected = currentScreen == Screen.SETTINGS,
                 onClick = {
                     onScreenChange(Screen.SETTINGS)
-                    onCloseDrawer()
-                },
+                    onCloseDrawer()                },
                 icon = {
                     Icon(
                         imageVector = Icons.Outlined.Settings,
@@ -1908,7 +1822,8 @@ class MainActivity : ComponentActivity() {
             NavigationDrawerItem(
                 label = { Text("About") },
                 selected = currentScreen == Screen.ABOUT,
-                onClick = {                    onScreenChange(Screen.ABOUT)
+                onClick = {
+                    onScreenChange(Screen.ABOUT)
                     onCloseDrawer()
                 },
                 icon = {
@@ -1934,22 +1849,17 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SniEditorDialog(
-        currentSni: String,
-        onSniChange: (String) -> Unit,
-        onDismiss: () -> Unit
-    ) {
-        var inputValue by remember { mutableStateOf(currentSni) }
+    private fun SniEditorDialog() {
+        var inputValue by remember { mutableStateOf(sniHostname) }
 
         AlertDialog(
-            onDismissRequest = onDismiss,
+            onDismissRequest = { showSniEditor = false },
             title = {
                 Text(
                     text = "Configure SNI Hostname",
                     color = TextPrimary
                 )
-            },
-            text = {
+            },            text = {
                 Column {
                     Text(
                         text = "Enter a hostname to spoof in TLS Client Hello:",
@@ -1957,7 +1867,8 @@ class MainActivity : ComponentActivity() {
                         fontSize = 14.sp
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(                        value = inputValue,
+                    OutlinedTextField(
+                        value = inputValue,
                         onValueChange = { inputValue = it },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("e.g., cdn.cloudflare.com") },
@@ -1977,16 +1888,16 @@ class MainActivity : ComponentActivity() {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onSniChange(inputValue)
+                        sniHostname = inputValue
                         savePreferences()
-                        onDismiss()
+                        showSniEditor = false
                     }
                 ) {
                     Text("Apply", color = ProtonPurple)
                 }
             },
             dismissButton = {
-                TextButton(onClick = onDismiss) {
+                TextButton(onClick = { showSniEditor = false }) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
@@ -1997,8 +1908,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun ErrorDialog(
         message: String,
-        onDismiss: () -> Unit
-    ) {
+        onDismiss: () -> Unit    ) {
         AlertDialog(
             onDismissRequest = onDismiss,
             icon = {
@@ -2006,7 +1916,8 @@ class MainActivity : ComponentActivity() {
                     imageVector = Icons.Default.Error,
                     contentDescription = "Error",
                     tint = ErrorRed
-                )            },
+                )
+            },
             title = {
                 Text(
                     text = "Connection Error",
@@ -2046,8 +1957,7 @@ class MainActivity : ComponentActivity() {
         connectionState = ConnectionState.CONNECTING
 
         val vpnIntent = VpnService.prepare(this)
-        if (vpnIntent != null) {
-            vpnPermissionLauncher.launch(vpnIntent)
+        if (vpnIntent != null) {            vpnPermissionLauncher.launch(vpnIntent)
         } else {
             startVpnConnection()
         }
@@ -2055,7 +1965,8 @@ class MainActivity : ComponentActivity() {
 
     private fun startVpnConnection() {
         try {
-            connectionStatus = "Starting SNI Handler..."            connectionState = ConnectionState.CONNECTING
+            connectionStatus = "Starting SNI Handler..."
+            connectionState = ConnectionState.CONNECTING
 
             val intent = Intent(this, NexusVpnService::class.java).apply {
                 action = "CONNECT"
@@ -2095,8 +2006,7 @@ class MainActivity : ComponentActivity() {
             connectionStatus = "Disconnecting..."
             connectionState = ConnectionState.DISCONNECTING
 
-            val intent = Intent(this, NexusVpnService::class.java).apply {
-                action = "DISCONNECT"
+            val intent = Intent(this, NexusVpnService::class.java).apply {                action = "DISCONNECT"
             }
             stopService(intent)
 
@@ -2104,7 +2014,7 @@ class MainActivity : ComponentActivity() {
             vpnConnecting = false
             connectionStatus = "Disconnected"
             connectionState = ConnectionState.DISCONNECTED
-            // Reset stats
+
             connectionStats = ConnectionStats(
                 uploadSpeed = "0 Mbps",
                 downloadSpeed = "0 Mbps",
@@ -2134,7 +2044,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateStats() {
-        // Simulated stats - in production, these would come from Rust core via JNI
         connectionStats = connectionStats.copy(
             downloadSpeed = "${(50..500).random()} Mbps",
             uploadSpeed = "${(10..100).random()} Mbps",
@@ -2144,16 +2053,15 @@ class MainActivity : ComponentActivity() {
             connectionTime = formatConnectionTime(System.currentTimeMillis())
         )
 
-        // Simulate Tor circuit info
         if (torEnabled) {
             torCircuitInfo = TorCircuitInfo(
-                entryNode = "185.220.101.${(1..254).random()}",
-                middleNode = "104.244.${(1..254).random()}.${(1..254).random()}",
+                entryNode = "185.220.101.${(1..254).random()}",                middleNode = "104.244.${(1..254).random()}.${(1..254).random()}",
                 exitNode = "185.220.102.${(1..254).random()}",
                 circuitId = "NEXUS${(1000..9999).random()}",
                 buildTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()),
                 isHealthy = true
-            )            torBootstrapped = true
+            )
+            torBootstrapped = true
         }
     }
 
@@ -2196,13 +2104,13 @@ class MainActivity : ComponentActivity() {
             VpnServer("us-la", "Los Angeles", "United States", "Los Angeles", "🇺🇸", 65, 42, false, true, true),
             VpnServer("uk-london", "London", "United Kingdom", "London", "🇬🇧", 85, 28, false, true, true),
             VpnServer("de-berlin", "Berlin", "Germany", "Berlin", "🇩🇪", 75, 31, false, true, true),
-            VpnServer("jp-tokyo", "Tokyo", "Japan", "Tokyo", "🇯🇵", 120, 45, true, true, true),
-            VpnServer("sg-singapore", "Singapore", "Singapore", "Singapore", "🇸🇬", 95, 38, false, true, true),
+            VpnServer("jp-tokyo", "Tokyo", "Japan", "Tokyo", "🇯🇵", 120, 45, true, true, true),            VpnServer("sg-singapore", "Singapore", "Singapore", "Singapore", "🇸🇬", 95, 38, false, true, true),
             VpnServer("au-sydney", "Sydney", "Australia", "Sydney", "🇦🇺", 150, 22, true, true, true),
             VpnServer("ca-toronto", "Toronto", "Canada", "Toronto", "🇨🇦", 55, 33, false, true, true),
             VpnServer("in-mumbai", "Mumbai", "India", "Mumbai", "🇮🇳", 110, 52, false, true, true),
             VpnServer("fr-paris", "Paris", "France", "Paris", "🇫🇷", 80, 29, false, true, true)
-        )    }
+        )
+    }
 
     private fun getServerById(id: String): VpnServer? {
         return getAvailableServers().find { it.id == id }
@@ -2217,16 +2125,4 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
         Log.d(TAG, "MainActivity onDestroy")
     }
-}
-
-// ============================================================================
-// CONNECTION STATE ENUM
-// ============================================================================
-
-enum class ConnectionState {
-    DISCONNECTED,
-    CONNECTING,
-    CONNECTED,
-    DISCONNECTING,
-    ERROR
 }

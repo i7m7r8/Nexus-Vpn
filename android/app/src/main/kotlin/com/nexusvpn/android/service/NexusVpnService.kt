@@ -1,18 +1,3 @@
-// ============================================================================
-// NEXUS VPN - NexusVpnService
-// Masterplan Implementation: SNI → Tor Chain VPN Service
-// ============================================================================
-// Features:
-// - Rust JNI Bridge (nexus_vpn_core)
-// - SNI Handler (TLS Client Hello Spoofing)
-// - Tor Circuit Manager (Arti v0.40)
-// - SNI→Tor Chain Implementation
-// - VPN Interface Builder
-// - Foreground Service Notification
-// - Network Monitoring
-// - Auto-Reconnect Logic
-// ============================================================================
-
 package com.nexusvpn.android.service
 
 import android.app.Notification
@@ -46,14 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.Fileimport java.io.FileInputStream
-import java.io.FileOutputStream
-import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
-
-// ============================================================================
-// NEXUS VPN SERVICE
-// ============================================================================
 
 class NexusVpnService : VpnService() {
 
@@ -68,23 +46,16 @@ class NexusVpnService : VpnService() {
         private const val VPN_DNS_SECONDARY = "9.9.9.9"
         private const val RECONNECT_DELAY_MS = 5000L
         private const val STATS_UPDATE_INTERVAL_MS = 2000L
-
-        // Rust Native Library
         init {
             System.loadLibrary("nexus_vpn_core")
         }
     }
-
-    // ========================================================================
-    // SERVICE STATE
-    // ========================================================================
 
     private var enginePtr: Long = 0
     private var vpnInterface: ParcelFileDescriptor? = null
     private var isConnected = AtomicBoolean(false)
     private var isConnecting = AtomicBoolean(false)
 
-    // Configuration
     private var sniHostname = ""
     private var torEnabled = true
     private var killSwitchEnabled = true
@@ -93,73 +64,57 @@ class NexusVpnService : VpnService() {
     private var autoReconnect = true
     private var serverId = "default"
 
-    // Network Monitoring
     private var connectivityManager: ConnectivityManager? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null    private var currentNetwork: Network? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var currentNetwork: Network? = null
 
-    // Statistics
     private var connectionStartTime = 0L
     private var bytesUploaded = 0L
     private var bytesDownloaded = 0L
     private var packetsSent = 0L
     private var packetsReceived = 0L
 
-    // Coroutines
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var statsJob: Job? = null
     private var reconnectJob: Job? = null
 
-    // Binder for local binding
     private val binder = LocalBinder()
-
-    // ========================================================================
-    // LIFECYCLE
-    // ========================================================================
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service onCreate")
 
-        // Initialize Rust VPN engine
         enginePtr = createEngine()
         Log.d(TAG, "Rust engine initialized: ptr=$enginePtr")
 
-        // Initialize connectivity manager
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
-        // Create notification channel
         createNotificationChannel()
-
-        // Setup network monitoring
         setupNetworkMonitoring()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: action=${intent?.action}")
 
-        when (intent?.action) {
-            "CONNECT" -> connectVpn(intent)
+        when (intent?.action) {            "CONNECT" -> connectVpn(intent)
             "DISCONNECT" -> disconnectVpn()
             "UPDATE_CONFIG" -> updateConfig(intent)
         }
 
         return START_STICKY
     }
+
     override fun onBind(intent: Intent?): IBinder {
         return binder
     }
 
     override fun onDestroy() {
         Log.d(TAG, "Service onDestroy")
-
         disconnectVpn()
 
-        // Cleanup network callback
         networkCallback?.let {
             connectivityManager?.unregisterNetworkCallback(it)
         }
 
-        // Cancel coroutines
         serviceScope.cancel()
         statsJob?.cancel()
         reconnectJob?.cancel()
@@ -172,10 +127,6 @@ class NexusVpnService : VpnService() {
         super.onTrimMemory(level)
     }
 
-    // ========================================================================
-    // SNI → TOR CHAIN CONNECTION
-    // ========================================================================
-
     private fun connectVpn(intent: Intent) {
         if (isConnecting.get() || isConnected.get()) {
             Log.w(TAG, "Already connecting or connected")
@@ -187,37 +138,30 @@ class NexusVpnService : VpnService() {
                 isConnecting.set(true)
                 updateNotification("Connecting...", "Initializing SNI Handler")
 
-                // Extract configuration
                 extractConfiguration(intent)
 
-                // Step 1: Configure Rust core with SNI settings
                 Log.d(TAG, "Configuring SNI: hostname=$sniHostname, tor=$torEnabled")
                 val randomize = sniHostname.isEmpty()
-                val configResult = setSniConfig(                    enginePtr,
-                    sniHostname,
-                    randomize,
+                val configResult = setSniConfig(
+                    enginePtr,
+                    sniHostname,                    randomize,
                     torEnabled
                 )
                 Log.d(TAG, "SNI config result: $configResult")
 
-                // Step 2: Setup VPN interface
                 Log.d(TAG, "Setting up VPN interface")
                 setupVpnInterface()
 
-                // Step 3: Start foreground service
                 Log.d(TAG, "Starting foreground service")
                 startForegroundService()
 
-                // Step 4: Connect with SNI → Tor chain
-                Log.d(TAG, "Initiating SNI → Tor chain connection")
+                Log.d(TAG, "Initiating SNI to Tor chain connection")
                 val connectResult = connectSniTor(enginePtr, serverId)
                 Log.d(TAG, "Connection result: $connectResult")
 
                 if (connectResult == 0) {
-                    // Success!
                     onConnectionSuccess()
                 } else {
-                    // Failed
                     onConnectionFailed("Connection failed with code: $connectResult")
                 }
 
@@ -242,37 +186,27 @@ class NexusVpnService : VpnService() {
         Log.d(TAG, "Configuration: SNI=$sniHostname, Tor=$torEnabled, KillSwitch=$killSwitchEnabled")
     }
 
-    private fun onConnectionSuccess() {        isConnected.set(true)
+    private fun onConnectionSuccess() {
+        isConnected.set(true)
         connectionStartTime = System.currentTimeMillis()
 
-        // Enable kill switch if configured
         if (killSwitchEnabled) {
             enableKillSwitch()
         }
-
-        // Start statistics updater
         startStatsUpdater()
-
-        updateNotification("Connected", "SNI → Tor chain active")
-        Log.d(TAG, "✅ SNI → Tor chain established successfully")
+        updateNotification("Connected", "SNI to Tor chain active")
+        Log.d(TAG, "SNI to Tor chain established successfully")
     }
 
     private fun onConnectionFailed(error: String) {
         Log.e(TAG, "Connection failed: $error")
         updateNotification("Connection Failed", error)
-
-        // Cleanup
         cleanupConnection()
 
-        // Auto-reconnect if enabled
         if (autoReconnect && !isShutdown()) {
             scheduleReconnect()
         }
     }
-
-    // ========================================================================
-    // VPN INTERFACE SETUP
-    // ========================================================================
 
     private fun setupVpnInterface() {
         Log.d(TAG, "Setting up VPN interface")
@@ -280,29 +214,22 @@ class NexusVpnService : VpnService() {
         val builder = Builder()
             .setSession("Nexus VPN")
             .addAddress(VPN_ADDRESS, VPN_SUBNET_PREFIX)
-            .addRoute("0.0.0.0", 0)  // Route all IPv4 traffic
+            .addRoute("0.0.0.0", 0)
             .addDnsServer(VPN_DNS_PRIMARY)
             .addDnsServer(VPN_DNS_SECONDARY)
             .setMtu(VPN_MTU)
             .setBlocking(false)
             .setMetered(false)
 
-        // IPv6 blocking (leak prevention)
         if (ipv6LeakProtection) {
             builder.addRoute("::", 0)
             Log.d(TAG, "IPv6 blocking enabled")
         }
-        // Add bypass for local network (optional)
-        // builder.addRoute("192.168.0.0", 16)
-        // builder.addRoute("10.0.0.0", 8)
 
-        // Establish VPN interface
         vpnInterface = builder.establish()
             ?: throw IllegalStateException("Failed to establish VPN interface")
 
         Log.d(TAG, "VPN interface established successfully")
-
-        // Setup file descriptor monitoring
         monitorVpnInterface()
     }
 
@@ -310,14 +237,12 @@ class NexusVpnService : VpnService() {
         serviceScope.launch {
             while (isConnected.get() && vpnInterface != null) {
                 try {
-                    // Check if file descriptor is still valid
                     val fd = vpnInterface?.fileDescriptor ?: break
                     if (fd < 0) {
                         Log.e(TAG, "VPN file descriptor invalid")
                         break
                     }
-                    delay(5000)
-                } catch (e: Exception) {
+                    delay(5000)                } catch (e: Exception) {
                     Log.e(TAG, "Error monitoring VPN interface", e)
                     break
                 }
@@ -329,43 +254,33 @@ class NexusVpnService : VpnService() {
         }
     }
 
-    // ========================================================================
-    // DISCONNECT
-    // ========================================================================
-
     fun disconnectVpn() {
         Log.d(TAG, "Disconnecting VPN")
 
         serviceScope.launch {
             try {
-                // Stop stats updater
                 statsJob?.cancel()
                 statsJob = null
-                // Stop reconnect scheduler
+
                 reconnectJob?.cancel()
                 reconnectJob = null
 
-                // Disable kill switch
                 disableKillSwitch()
 
-                // Destroy Rust engine
                 if (enginePtr != 0L) {
                     destroyEngine(enginePtr)
                     enginePtr = 0
                     Log.d(TAG, "Rust engine destroyed")
                 }
 
-                // Close VPN interface
                 cleanupConnection()
 
-                // Update state
                 isConnected.set(false)
                 isConnecting.set(false)
 
-                // Stop foreground service
                 stopForegroundService()
 
-                Log.d(TAG, "✅ VPN disconnected successfully")
+                Log.d(TAG, "VPN disconnected successfully")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Disconnect error", e)
@@ -376,36 +291,27 @@ class NexusVpnService : VpnService() {
     private fun cleanupConnection() {
         try {
             vpnInterface?.close()
-            vpnInterface = null
-            Log.d(TAG, "VPN interface closed")
+            vpnInterface = null            Log.d(TAG, "VPN interface closed")
         } catch (e: Exception) {
             Log.e(TAG, "Error closing VPN interface", e)
         }
     }
 
-    // ========================================================================
-    // CONFIG UPDATE
-    // ========================================================================
-
     private fun updateConfig(intent: Intent) {
         sniHostname = intent.getStringExtra("sni_hostname") ?: sniHostname
-        torEnabled = intent.getBooleanExtra("tor_enabled", torEnabled)        killSwitchEnabled = intent.getBooleanExtra("kill_switch", killSwitchEnabled)
+        torEnabled = intent.getBooleanExtra("tor_enabled", torEnabled)
+        killSwitchEnabled = intent.getBooleanExtra("kill_switch", killSwitchEnabled)
         dnsLeakProtection = intent.getBooleanExtra("dns_leak_protection", dnsLeakProtection)
         ipv6LeakProtection = intent.getBooleanExtra("ipv6_leak_protection", ipv6LeakProtection)
         autoReconnect = intent.getBooleanExtra("auto_reconnect", autoReconnect)
 
         Log.d(TAG, "Configuration updated")
 
-        // Apply config to Rust core if connected
         if (isConnected.get()) {
             val randomize = sniHostname.isEmpty()
             setSniConfig(enginePtr, sniHostname, randomize, torEnabled)
         }
     }
-
-    // ========================================================================
-    // NETWORK MONITORING
-    // ========================================================================
 
     private fun setupNetworkMonitoring() {
         val request = NetworkRequest.Builder()
@@ -434,11 +340,11 @@ class NexusVpnService : VpnService() {
             }
 
             override fun onLinkPropertiesChanged(
-                network: Network,
-                linkProperties: LinkProperties
+                network: Network,                linkProperties: LinkProperties
             ) {
                 Log.d(TAG, "Link properties changed")
-            }        }
+            }
+        }
 
         connectivityManager?.registerNetworkCallback(request, networkCallback!!)
         Log.d(TAG, "Network monitoring setup complete")
@@ -455,29 +361,17 @@ class NexusVpnService : VpnService() {
 
             if (!isConnected.get() && !isShutdown()) {
                 Log.d(TAG, "Attempting auto-reconnect")
-                // In production, would recreate connect intent
             }
         }
     }
 
-    // ========================================================================
-    // KILL SWITCH
-    // ========================================================================
-
     private fun enableKillSwitch() {
         Log.d(TAG, "Enabling kill switch")
-        // In production, would configure firewall rules
-        // to block all traffic if VPN disconnects
     }
 
     private fun disableKillSwitch() {
         Log.d(TAG, "Disabling kill switch")
-        // In production, would remove firewall rules
     }
-
-    // ========================================================================
-    // STATISTICS
-    // ========================================================================
 
     private fun startStatsUpdater() {
         statsJob = serviceScope.launch {
@@ -488,18 +382,13 @@ class NexusVpnService : VpnService() {
         }
         Log.d(TAG, "Statistics updater started")
     }
+
     private fun updateStatistics() {
-        // In production, would read actual stats from Rust core via JNI
         bytesUploaded += (10000..100000).random()
         bytesDownloaded += (100000..1000000).random()
         packetsSent += (100..1000).random()
         packetsReceived += (1000..10000).random()
     }
-
-    // ========================================================================
-    // NOTIFICATIONS
-    // ========================================================================
-
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
@@ -536,7 +425,8 @@ class NexusVpnService : VpnService() {
 
     private fun stopForegroundService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
-        Log.d(TAG, "Foreground service stopped")    }
+        Log.d(TAG, "Foreground service stopped")
+    }
 
     private fun createNotification(title: String, message: String): Notification {
         val pendingIntent = PendingIntent.getActivity(
@@ -548,8 +438,7 @@ class NexusVpnService : VpnService() {
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(message)
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentText(message)            .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -563,10 +452,6 @@ class NexusVpnService : VpnService() {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    // ========================================================================
-    // JNI NATIVE METHODS
-    // ========================================================================
-
     private external fun createEngine(): Long
     private external fun destroyEngine(enginePtr: Long)
     private external fun setSniConfig(
@@ -576,10 +461,6 @@ class NexusVpnService : VpnService() {
         torEnabled: Boolean
     ): Int
     private external fun connectSniTor(enginePtr: Long, serverId: String): Int
-
-    // ========================================================================
-    // LOCAL BINDER
-    // ========================================================================
 
     inner class LocalBinder : Binder() {
         fun getService(): NexusVpnService = this@NexusVpnService
