@@ -23,8 +23,7 @@ class SniProxyService(private val context: Context) {
     private var isRunning = AtomicBoolean(false)
     private var sniHostname: String = ""
     private var serverThread: Thread? = null
-    // logCallback removed
-
+    
     /**
      * Start SNI proxy service
      */

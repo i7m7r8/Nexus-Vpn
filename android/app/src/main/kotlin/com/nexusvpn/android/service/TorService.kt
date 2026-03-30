@@ -27,8 +27,7 @@ class TorService(private val context: Context) {
     private var isStarting = AtomicBoolean(false)
     private var bootstrapProgress = 0
     private var torProcess: Process? = null
-    // logCallback removed
-
+    
     /**
      * Start Tor service - REAL implementation
      */
