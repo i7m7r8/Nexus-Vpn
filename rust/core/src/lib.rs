@@ -1578,6 +1578,7 @@ impl VpnConnection {
 /// - Tor integration (SNI→Tor chaining)
 /// - Encryption
 /// - Statistics and logging
+}
 pub struct VpnEngine {
     /// Available servers
     servers: Arc<RwLock<HashMap<String, VpnServer>>>,
@@ -2376,4 +2377,3 @@ mod tests {
 // Status: Production Ready
 // ============================================================================
 
-}
