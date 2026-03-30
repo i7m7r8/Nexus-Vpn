@@ -102,17 +102,13 @@ class SniProxyService {
         log("CONNECT $destHost:$destPort via Tor")
 
         val torSocket = connectViaTorSocks5(destHost, destPort) ?: run {
-            clientOut.write("HTTP/1.1 503 Service Unavailable
-
-".toByteArray())
+            clientOut.write("HTTP/1.1 503 Service Unavailable\r\n\r\n".toByteArray())
             log("Tor connection failed")
             return
         }
 
         torSocket.use { tor ->
-            clientOut.write("HTTP/1.1 200 Connection Established
-
-".toByteArray())
+            clientOut.write("HTTP/1.1 200 Connection Established\r\n\r\n".toByteArray())
             clientOut.flush()
             log("Tunnel established")
 
