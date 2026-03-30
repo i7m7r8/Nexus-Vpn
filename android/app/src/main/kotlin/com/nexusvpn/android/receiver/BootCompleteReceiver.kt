@@ -63,7 +63,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
     private fun handleLockedBootCompleted(context: Context) {
         Log.d(TAG, "Handling locked boot completed")
 
-        val prefs = context.getSharedPreferences(PREFS_NAME, if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) Context.MODE_DIRECT_BOOT else Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(PREFS_NAME, if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) android.content.Context.MODE_DIRECT_BOOT else android.content.Context.MODE_PRIVATE else Context.MODE_PRIVATE)
         val autoStartEnabled = prefs.getBoolean(KEY_AUTO_START, false)
 
         if (autoStartEnabled) {
