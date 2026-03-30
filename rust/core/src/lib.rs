@@ -341,7 +341,8 @@ pub struct TorConfig {
     pub auto_rotation: bool,
     /// Rotation interval in minutes
     pub rotation_interval_mins: u64,
-    /// Strict exit node policy    pub strict_exit: bool,
+    /// Strict exit node policy
+    pub strict_exit: bool,
     /// Allow/exit node countries
     pub allowed_countries: Vec<String>,
 }
@@ -537,7 +538,8 @@ pub struct DetailedConnectionStats {
 /// Leak Test Result
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LeakTestResult {
-    /// IPv6 leaked    pub ipv6_leaked: bool,
+    /// IPv6 leaked
+    pub ipv6_leaked: bool,
     /// WebRTC leaked
     pub webrtc_leaked: bool,
     /// DNS leaked
@@ -831,7 +833,8 @@ impl EncryptionEngine {
             .map(|_| true)
     }
 
-    /// HMAC-SHA256 for integrity    pub fn hmac_sha256(data: &[u8], key: &[u8]) -> Vec<u8> {
+    /// HMAC-SHA256 for integrity
+    pub fn hmac_sha256(data: &[u8], key: &[u8]) -> Vec<u8> {
         let mut mac = Hmac::<Sha256>::new_from_slice(key)
             .expect("HMAC can take key of any size");
         mac.update(data);
