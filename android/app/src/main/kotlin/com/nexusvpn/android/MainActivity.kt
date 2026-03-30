@@ -146,6 +146,8 @@ class MainActivity : ComponentActivity() {
     private var showSniEditor by mutableStateOf(false)
     private var connectionStats by mutableStateOf(ConnectionStats("0 Mbps", "0 Mbps", "0 MB", "0 MB", "00:00:00", "-- ms"))
     private var sniTorStatus by mutableStateOf(SniTorStatus(false, false, false, 0))
+    private var vpnService: NexusVpnService? = null
+    private var serviceConnection by mutableStateOf(false)
     private var logList by mutableStateOf<List<LogEntry>>(emptyList())
     private var showLogs by mutableStateOf(false)
 
