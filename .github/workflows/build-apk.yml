@@ -24,13 +24,12 @@ jobs:
           toolchain: stable
           targets: aarch64-linux-android,x86_64-linux-android
 
-      - name: Add Android Targets
-        run: rustup target add aarch64-linux-android x86_64-linux-android
-
       - name: Setup NDK
         uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
           ndk-version: r27
+          add-to-path: true
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -38,14 +37,46 @@ jobs:
           distribution: temurin
           java-version: 25
 
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk
+      - name: Setup Android Build Tools
+        uses: android-actions/setup-android@v3
 
-      - name: Build Rust
-        run: cd rust/core && cargo build --release --target aarch64-linux-android && cargo build --release --target x86_64-linux-android
+      - name: Configure NDK for Rust
+        run: |
+          export NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
+          export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
+          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+                    # Set up clang paths
+          export TOOLCHAIN=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
+          export PATH=$TOOLCHAIN/bin:$PATH
+          echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
+          
+          # Set compiler variables
+          export CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android24-clang
+          export CXX_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android24-clang++
+          export CC_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android24-clang
+          export CXX_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android24-clang
+          
+          echo "CC_aarch64_linux_android=$CC_aarch64_linux_android" >> $GITHUB_ENV
+          echo "CXX_aarch64_linux_android=$CXX_aarch64_linux_android" >> $GITHUB_ENV
+          echo "CC_x86_64_linux_android=$CC_x86_64_linux_android" >> $GITHUB_ENV
+          echo "CXX_x86_64_linux_android=$CXX_x86_64_linux_android" >> $GITHUB_ENV
+          
+          # Verify compiler exists
+          ls -la $TOOLCHAIN/bin/*android*clang | head -5
+
+      - name: Build Rust ARM64
+        run: cd rust/core && cargo build --release --target aarch64-linux-android
+
+      - name: Build Rust X86_64
+        run: cd rust/core && cargo build --release --target x86_64-linux-android
 
       - name: Copy Libraries
-        run: mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/jniLibs/x86_64 && cp rust/target/aarch64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/arm64-v8a/ && cp rust/target/x86_64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/x86_64/
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          cp rust/target/aarch64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/arm64-v8a/
+          cp rust/target/x86_64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/x86_64/
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -64,8 +95,7 @@ jobs:
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
-        with:
-          name: nexus-vpn-release
+        with:          name: nexus-vpn-release
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
 
