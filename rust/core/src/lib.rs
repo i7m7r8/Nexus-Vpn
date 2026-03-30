@@ -54,22 +54,22 @@ use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Aes128Gcm, Key as AesKey};
 use aes_gcm::aead::{Aead as AeadTrait, KeyInit as KeyInitTrait};
 use hmac::{Hmac, Mac};
-use hkdf::Hkdf;
+// use hkdf::Hkdf;
 use pbkdf2::pbkdf2_hmac;
-use argon2::{Argon2, password_hash::SaltString};
-use bcrypt::{hash, verify, DEFAULT_COST};
+use argon2::{Argon2, password_hash::SaltString, PasswordHasher, PasswordVerifier};
+// use bcrypt::{hash, verify, DEFAULT_COST};
 
 // TLS/Networking
-use rustls::pki_types::ServerName;
+// use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, RootCertStore};
 use rustls::pki_types::{CertificateDer, ServerName as RustlsServerName};
-use webpki_roots::TLS_SERVER_ROOTS;
+// use webpki_roots::TLS_SERVER_ROOTS;
 use tokio::net::{TcpStream, UdpSocket, TcpListener};
 use tokio_rustls::TlsConnector;
 
 // Arti Tor Client (v0.40)
 use arti_client::TorClient;
-use tor_rtcompat::PreferredRuntime;
+use arti_client::config::Config as ArtiConfig;
 use tor_rtcompat::PreferredRuntime;
 
 // Serialization
@@ -409,7 +409,6 @@ pub struct SplitTunnelConfig {
 /// Split Tunneling Mode
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SplitTunnelMode {
-    #[default]
     /// Only these apps use VPN
     IncludeOnly,
     /// All apps except these use VPN
@@ -574,18 +573,18 @@ pub struct PooledConnection {
 }
 
 /// Stream type for routing
-#[derive(Debug)]
+// #[derive(Debug)]
 pub enum Stream {
     /// Plain TCP
     Tcp(TcpStream),
     /// TLS-wrapped TCP
     Tls(tokio_rustls::client::TlsStream<TcpStream>),
     /// Tor stream
-    Tor(tor_rtcompat::general::Stream),
+    Tor(arti_client::DataStream),
     /// SNI-obfuscated stream
     Sni(TcpStream),
     /// Chained SNI→Tor stream
-    SniTor(Box<Stream>, tor_rtcompat::general::Stream),
+    SniTor(Box<Stream>, arti_client::DataStream),
 }
 
 // ============================================================================
@@ -840,7 +839,7 @@ impl EncryptionEngine {
 
     /// HMAC-SHA256 for integrity
     pub fn hmac_sha256(data: &[u8], key: &[u8]) -> Vec<u8> {
-        let mut mac = Hmac::<Sha256>::new_from_slice(key)
+        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(key)
             .expect("HMAC can take key of any size");
         mac.update(data);
         mac.finalize().into_bytes().to_vec()
@@ -1230,7 +1229,7 @@ impl TorManager {
     }
 
     /// Connect through Tor
-    pub async fn connect_tcp(&self, addr: &str, port: u16) -> Result<tor_rtcompat::general::Stream, String> {        let client = self.client
+    pub async fn connect_tcp(&self, addr: &str, port: u16) -> Result<arti_client::DataStream, String> {        let client = self.client
             .as_ref()
             .ok_or_else(|| "Tor client not started".to_string())?;
 
@@ -1659,7 +1658,7 @@ impl VpnEngine {
     }
 
     /// Configure SNI and Tor
-    pub fn set_sni_config(&mut self, sni_enabled: bool, custom_sni: String, tor_enabled: bool) {
+    pub async fn set_sni_config(&mut self, sni_enabled: bool, custom_sni: String, tor_enabled: bool) {
         self.sni_enabled = sni_enabled;
         self.custom_sni_hostname = custom_sni;
         self.tor_enabled = tor_enabled;
@@ -1849,12 +1848,16 @@ impl ConnectionPool {
         let conn_id = format!("{}:{}", addr.ip(), addr.port());
         let mut conns = self.connections.write().await;
 
-        if let Some(conn) = conns.get(&conn_id) {
-            if conn.is_active {
-                let mut updated = conn.clone();
-                updated.last_used = Instant::now();
-                conns.insert(conn_id.clone(), updated);
-                return Ok(conn.clone());
+        let conn_exists = conns.contains_key(&conn_id);
+        if conn_exists {
+            if let Some(conn) = conns.get(&conn_id) {
+                if conn.is_active {
+                    let mut updated = conn.clone();
+                    updated.last_used = Instant::now();
+                    let conn_id_clone = conn_id.clone();
+                    conns.insert(conn_id_clone, updated);
+                    return Ok(conns.get(&conn_id).unwrap().clone());
+                }
             }
         }
 
