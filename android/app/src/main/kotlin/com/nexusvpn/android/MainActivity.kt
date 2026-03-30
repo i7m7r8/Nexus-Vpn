@@ -100,6 +100,7 @@ import com.nexusvpn.android.service.NexusVpnService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import androidx.compose.material3.darkColorScheme
 
 val ProtonPurple = Color(0xFF6F02B5)
 val ProtonOrange = Color(0xFFFFA500)
