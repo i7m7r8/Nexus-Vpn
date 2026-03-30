@@ -194,7 +194,7 @@ pub enum CipherSuite {
     /// Both (auto-select based on platform)
     Both,
     /// Custom (user-defined)
-    Custom(String),}
+    Custom(String),
 
 impl Default for CipherSuite {
     fn default() -> Self {
