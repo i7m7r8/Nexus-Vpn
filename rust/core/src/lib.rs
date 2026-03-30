@@ -196,6 +196,7 @@ pub enum CipherSuite {
     /// Custom (user-defined)
     Custom(String),
 
+}
 impl Default for CipherSuite {
     fn default() -> Self {
         CipherSuite::ChaCha20Poly1305
