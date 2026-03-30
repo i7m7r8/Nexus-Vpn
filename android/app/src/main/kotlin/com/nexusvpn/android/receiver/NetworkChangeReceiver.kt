@@ -18,7 +18,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
     }
 
     private var lastNetworkType = -1
-    private var wasConnected = false
+    private var this.wasConnected = false
     private var reconnectScheduled = false
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -45,18 +45,18 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         Log.d(TAG, "Network state: connected=$isConnected, type=$networkType, lastType=$lastNetworkType")
 
         when {
-            !isConnected && wasConnected -> {
-                Log.w(TAG, "Network disconnected")                wasConnected = false
+            !isConnected && this.wasConnected -> {
+                Log.w(TAG, "Network disconnected")                this.wasConnected = false
                 onNetworkDisconnected(context)
             }
 
-            isConnected && !wasConnected -> {
+            isConnected && !this.wasConnected -> {
                 Log.d(TAG, "Network connected")
-                wasConnected = true
+                this.wasConnected = true
                 onNetworkConnected(context, networkType, connectivityManager)
             }
 
-            isConnected && wasConnected && networkType != lastNetworkType -> {
+            isConnected && this.wasConnected && networkType != lastNetworkType -> {
                 Log.d(TAG, "Network type changed: $lastNetworkType -> $networkType")
                 onNetworkTypeChanged(context, lastNetworkType, networkType)
             }

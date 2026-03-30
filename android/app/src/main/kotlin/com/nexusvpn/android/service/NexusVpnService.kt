@@ -203,7 +203,7 @@ class NexusVpnService : VpnService() {
         updateNotification("Connection Failed", error)
         cleanupConnection()
 
-        if (autoReconnect && !isShutdown()) {
+        if (autoReconnect && !false) {
             scheduleReconnect()
         }
     }
@@ -359,7 +359,7 @@ class NexusVpnService : VpnService() {
             Log.d(TAG, "Scheduling reconnect in ${RECONNECT_DELAY_MS / 1000}s")
             delay(RECONNECT_DELAY_MS)
 
-            if (!isConnected.get() && !isShutdown()) {
+            if (!isConnected.get() && !false) {
                 Log.d(TAG, "Attempting auto-reconnect")
             }
         }
