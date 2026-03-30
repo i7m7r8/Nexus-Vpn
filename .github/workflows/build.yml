@@ -3,19 +3,16 @@ name: Build and Release Nexus VPN
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 jobs:
   build-android:
-    name: Build Android APK
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -24,15 +21,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Debug APK
-        run: |
-          cd android
-          gradle assembleDebug --no-daemon
+      - name: Build Debug
+        run: cd android && gradle assembleDebug --no-daemon
 
-      - name: Build Release APK
-        run: |
-          cd android
-          gradle assembleRelease --no-daemon
+      - name: Build Release
+        run: cd android && gradle assembleRelease --no-daemon
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -46,33 +39,15 @@ jobs:
           name: app-release
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: Create GitHub Release        if: github.ref == 'refs/heads/main'
+      - name: Create Release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v2.0.0-${{ github.run_number }}
-          name: Nexus VPN v2.0.0 Build ${{ github.run_number }}
-          body: |
-            ## Nexus VPN v2.0.0 - Real VPN Implementation
-            
-            ### Features
-            - Real Tor Integration (Tor Android Library)
-            - SNI Spoofing (TLS Client Hello Modification)
-            - VPN Mode (No Root Required)
-            - DNS Leak Protection
-            - Kill Switch
-            
-            ### Installation
-            1. Download app-debug.apk
-            2. Install on Android device
-            3. Grant VPN permission
-            4. Connect!
-            
-            ### Inspired by Invizible Pro
-            Built with proven libraries, not stubs.
+          name: Nexus VPN v2.0.0
           files: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/release/app-release-unsigned.apk
-          draft: false
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
