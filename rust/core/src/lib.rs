@@ -415,6 +415,12 @@ pub enum SplitTunnelMode {
     ExcludeOnly,
 }
 
+impl Default for SplitTunnelMode {
+    fn default() -> Self {
+        SplitTunnelMode::ExcludeOnly
+    }
+}
+
 /// Battery Profile
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum BatteryProfile {
@@ -1193,12 +1199,10 @@ impl TorManager {
     /// - .config(Config::default()) - NOT .with_config()
     /// - .create_bootstrapped().await - Bootstrap and connect
     pub async fn start(&mut self, _config: TorClientConfig) -> Result<(), String> {
-        use tor_rtcompat::PreferredRuntime;
 
         info!("Starting Tor client with Arti v0.40...");
 
         let client = TorClient::builder()
-            .configure_config(|_cfg| {})
             .create_bootstrapped()
             .await
             .map_err(|e| format!("Arti bootstrap failed: {}", e))?;
