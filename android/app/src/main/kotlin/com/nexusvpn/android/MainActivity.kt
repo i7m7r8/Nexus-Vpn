@@ -150,7 +150,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "MainActivity onCreate")
+            Log.d(TAG, "MainActivity onCreate")
         loadPreferences()
         requestPermissions()
         initializeUI()
@@ -193,8 +193,8 @@ class MainActivity : ComponentActivity() {
     private fun TopAppBarContent() {
         TopAppBar(title = { Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Shield, "Nexus VPN", tint = ProtonPurple, modifier = Modifier.size(28.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Nexus VPN", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Nexus VPN", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }}, colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface),
         actions = {
             IconButton(onClick = { showSniEditor = true }) { Icon(Icons.Default.Lock, "SNI", tint = ProtonOrange) }
@@ -209,15 +209,15 @@ class MainActivity : ComponentActivity() {
                 icon = { Icon(if (currentScreen == Screen.HOME) Icons.Filled.Home else Icons.Outlined.Home, "Home") },
                 label = { Text("Home", fontSize = 12.sp) },
                 colors = NavigationBarItemDefaults.colors(selectedIconColor = ProtonPurple, selectedTextColor = ProtonPurple, unselectedIconColor = TextSecondary))
-        NavigationBarItem(selected = currentScreen == Screen.SERVERS, onClick = { currentScreen = Screen.SERVERS },
+            NavigationBarItem(selected = currentScreen == Screen.SERVERS, onClick = { currentScreen = Screen.SERVERS },
                 icon = { Icon(Icons.Default.Public, "Servers") },
                 label = { Text("Servers", fontSize = 12.sp) },
                 colors = NavigationBarItemDefaults.colors(selectedIconColor = ProtonPurple, selectedTextColor = ProtonPurple, unselectedIconColor = TextSecondary))
-        NavigationBarItem(selected = currentScreen == Screen.STATISTICS, onClick = { currentScreen = Screen.STATISTICS },
+            NavigationBarItem(selected = currentScreen == Screen.STATISTICS, onClick = { currentScreen = Screen.STATISTICS },
                 icon = { Icon(Icons.Outlined.Speed, "Stats") },
                 label = { Text("Stats", fontSize = 12.sp) },
                 colors = NavigationBarItemDefaults.colors(selectedIconColor = ProtonPurple, selectedTextColor = ProtonPurple, unselectedIconColor = TextSecondary))
-        NavigationBarItem(selected = currentScreen == Screen.SETTINGS, onClick = { currentScreen = Screen.SETTINGS },
+            NavigationBarItem(selected = currentScreen == Screen.SETTINGS, onClick = { currentScreen = Screen.SETTINGS },
                 icon = { Icon(if (currentScreen == Screen.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings, "Settings") },
                 label = { Text("Settings", fontSize = 12.sp) },
                 colors = NavigationBarItemDefaults.colors(selectedIconColor = ProtonPurple, selectedTextColor = ProtonPurple, unselectedIconColor = TextSecondary))
@@ -228,9 +228,9 @@ class MainActivity : ComponentActivity() {
     private fun ScreenContent() {
         when (currentScreen) {
             Screen.HOME -> HomeScreen()
-        Screen.SERVERS -> ServerListScreen()
-        Screen.STATISTICS -> StatisticsScreen()
-        Screen.SETTINGS -> SettingsScreen()
+            Screen.SERVERS -> ServerListScreen()
+            Screen.STATISTICS -> StatisticsScreen()
+            Screen.SETTINGS -> SettingsScreen()
         }
         if (showSniEditor) SniEditorDialog()
     }
@@ -239,13 +239,13 @@ class MainActivity : ComponentActivity() {
     private fun HomeScreen() {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(modifier = Modifier.height(16.dp))
-        ConnectionStatusCard()
-        Spacer(modifier = Modifier.height(24.dp))
-        SniTorChainVisualization()
-        Spacer(modifier = Modifier.height(24.dp))
-        QuickStatsRow()
-        Spacer(modifier = Modifier.height(24.dp))
-        CurrentServerCard()
+            ConnectionStatusCard()
+            Spacer(modifier = Modifier.height(24.dp))
+            SniTorChainVisualization()
+            Spacer(modifier = Modifier.height(24.dp))
+            QuickStatsRow()
+            Spacer(modifier = Modifier.height(24.dp))
+            CurrentServerCard()
         }
     }
 
@@ -256,7 +256,7 @@ class MainActivity : ComponentActivity() {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Box(modifier = Modifier.size(140.dp).clip(CircleShape).background(brush = Brush.radialGradient(colors = when (connectionPhase) {
                         ConnectionPhase.CONNECTED -> listOf(SuccessGreen, SuccessGreen.copy(alpha = 0.5f))
-        ConnectionPhase.CONNECTING_VPN, ConnectionPhase.CONNECTING_SNI, ConnectionPhase.CONNECTING_TOR -> listOf(ProtonOrange, ProtonOrange.copy(alpha = 0.5f))
+            ConnectionPhase.CONNECTING_VPN, ConnectionPhase.CONNECTING_SNI, ConnectionPhase.CONNECTING_TOR -> listOf(ProtonOrange, ProtonOrange.copy(alpha = 0.5f))
                         else -> listOf(DarkSurfaceVariant, DarkSurface)
                     })), contentAlignment = Alignment.Center) {
                         when (connectionPhase) {
@@ -275,14 +275,14 @@ class MainActivity : ComponentActivity() {
                         }, modifier = Modifier.size(70.dp))
                     }
                     Spacer(modifier = Modifier.height(24.dp))
-        Text(connectionStatus, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = when (connectionPhase) {
+            Text(connectionStatus, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = when (connectionPhase) {
                         ConnectionPhase.CONNECTED -> SuccessGreen
                         ConnectionPhase.CONNECTING_VPN, ConnectionPhase.CONNECTING_SNI, ConnectionPhase.CONNECTING_TOR -> ProtonOrange
                         ConnectionPhase.ERROR -> ErrorRed
                         else -> TextSecondary
                     })
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(when (connectionPhase) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(when (connectionPhase) {
                         ConnectionPhase.CONNECTING_VPN -> "Step 1/3: Establishing VPN..."
                         ConnectionPhase.CONNECTING_SNI -> "Step 2/3: Starting SNI Proxy..."
                         ConnectionPhase.CONNECTING_TOR -> "Step 3/3: Bootstrapping Tor..."
@@ -292,10 +292,10 @@ class MainActivity : ComponentActivity() {
                     }, fontSize = 14.sp, color = TextTertiary)
                     if (connectionPhase == ConnectionPhase.CONNECTING_TOR) {
                         Spacer(modifier = Modifier.height(16.dp))
-        LinearProgressIndicator(progress = sniTorStatus.torProgress / 100f, modifier = Modifier.width(200.dp), color = ProtonOrange)
-        Text("${sniTorStatus.torProgress}%", fontSize = 12.sp, color = ProtonOrange)                    }
+            LinearProgressIndicator(progress = sniTorStatus.torProgress / 100f, modifier = Modifier.width(200.dp), color = ProtonOrange)
+            Text("${sniTorStatus.torProgress}%", fontSize = 12.sp, color = ProtonOrange)                    }
                     Spacer(modifier = Modifier.height(24.dp))
-        Button(onClick = { toggleVpn() }, modifier = Modifier.width(200.dp).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = when (connectionPhase) {
+            Button(onClick = { toggleVpn() }, modifier = Modifier.width(200.dp).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = when (connectionPhase) {
                         ConnectionPhase.CONNECTED -> ErrorRed
                         ConnectionPhase.CONNECTING_VPN, ConnectionPhase.CONNECTING_SNI, ConnectionPhase.CONNECTING_TOR -> ProtonOrange
                         ConnectionPhase.ERROR -> ErrorRed
@@ -319,33 +319,33 @@ class MainActivity : ComponentActivity() {
             Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("SNI → Tor Chain", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Badge(containerColor = if (sniTorStatus.chainActive) SuccessGreen else if (vpnConnecting) ProtonOrange else DarkSurfaceVariant, contentColor = TextPrimary) {
+            Badge(containerColor = if (sniTorStatus.chainActive) SuccessGreen else if (vpnConnecting) ProtonOrange else DarkSurfaceVariant, contentColor = TextPrimary) {
                         Text(if (sniTorStatus.chainActive) "ACTIVE" else if (vpnConnecting) "CONNECTING" else "INACTIVE", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     ConnectionPhaseNode("Device", Icons.Default.Public, vpnConnected)
-        ConnectionPhaseArrow(connectionPhase == ConnectionPhase.CONNECTING_SNI || sniTorStatus.sniConnected)
-        ConnectionPhaseNode("SNI", Icons.Default.Lock, sniTorStatus.sniConnected)
-        ConnectionPhaseArrow(connectionPhase == ConnectionPhase.CONNECTING_TOR || (sniTorStatus.sniConnected && torEnabled))
-        ConnectionPhaseNode("Tor", Icons.Default.Cloud, sniTorStatus.torConnected)
-        ConnectionPhaseArrow(sniTorStatus.chainActive)
-        ConnectionPhaseNode("Internet", Icons.Default.Public, sniTorStatus.chainActive)
+            ConnectionPhaseArrow(connectionPhase == ConnectionPhase.CONNECTING_SNI || sniTorStatus.sniConnected)
+            ConnectionPhaseNode("SNI", Icons.Default.Lock, sniTorStatus.sniConnected)
+            ConnectionPhaseArrow(connectionPhase == ConnectionPhase.CONNECTING_TOR || (sniTorStatus.sniConnected && torEnabled))
+            ConnectionPhaseNode("Tor", Icons.Default.Cloud, sniTorStatus.torConnected)
+            ConnectionPhaseArrow(sniTorStatus.chainActive)
+            ConnectionPhaseNode("Internet", Icons.Default.Public, sniTorStatus.chainActive)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("SNI: ${statusIcon(sniTorStatus.sniConnected)}", fontSize = 12.sp, color = if (sniTorStatus.sniConnected) SuccessGreen else TextTertiary)
-        Text("Tor: ${statusIcon(sniTorStatus.torConnected)}", fontSize = 12.sp, color = if (sniTorStatus.torConnected) SuccessGreen else TextTertiary)
-        Text("Chain: ${statusIcon(sniTorStatus.chainActive)}", fontSize = 12.sp, color = if (sniTorStatus.chainActive) SuccessGreen else TextTertiary)
+            Text("Tor: ${statusIcon(sniTorStatus.torConnected)}", fontSize = 12.sp, color = if (sniTorStatus.torConnected) SuccessGreen else TextTertiary)
+            Text("Chain: ${statusIcon(sniTorStatus.chainActive)}", fontSize = 12.sp, color = if (sniTorStatus.chainActive) SuccessGreen else TextTertiary)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(value = sniHostname.ifEmpty { "Auto (Randomized)" }, onValueChange = { }, modifier = Modifier.fillMaxWidth(), label = { Text("SNI Hostname") }, readOnly = true, trailingIcon = { IconButton(onClick = { showSniEditor = true }) { Icon(Icons.Default.Refresh, "Edit", tint = ProtonOrange) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ProtonPurple, unfocusedBorderColor = DividerColor))
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {                    Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(value = sniHostname.ifEmpty { "Auto (Randomized)" }, onValueChange = { }, modifier = Modifier.fillMaxWidth(), label = { Text("SNI Hostname") }, readOnly = true, trailingIcon = { IconButton(onClick = { showSniEditor = true }) { Icon(Icons.Default.Refresh, "Edit", tint = ProtonOrange) } }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ProtonPurple, unfocusedBorderColor = DividerColor))
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Security, "Tor", tint = ProtonOrange, modifier = Modifier.size(20.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Tor Integration", fontSize = 14.sp, color = TextSecondary)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Tor Integration", fontSize = 14.sp, color = TextSecondary)
                     }
                     Switch(checked = torEnabled, onCheckedChange = { torEnabled = it; savePreferences() }, colors = SwitchDefaults.colors(checkedThumbColor = ProtonPurple))
                 }
@@ -362,7 +362,7 @@ class MainActivity : ComponentActivity() {
                 Icon(icon, label, tint = if (isActive) Color.White else TextTertiary, modifier = Modifier.size(26.dp))
             }
             Spacer(modifier = Modifier.height(4.dp))
-        Text(label, fontSize = 11.sp, color = if (isActive) TextPrimary else TextTertiary)
+            Text(label, fontSize = 11.sp, color = if (isActive) TextPrimary else TextTertiary)
         }
     }
 
@@ -375,8 +375,8 @@ class MainActivity : ComponentActivity() {
     private fun QuickStatsRow() {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             QuickStatCard(Icons.Default.Speed, "Speed", connectionStats.downloadSpeed, ProtonPurple)
-        QuickStatCard(Icons.Default.Timer, "Latency", connectionStats.latency, ProtonOrange)
-        QuickStatCard(Icons.Default.DataUsage, "Data", connectionStats.totalDownload, SuccessGreen)
+            QuickStatCard(Icons.Default.Timer, "Latency", connectionStats.latency, ProtonOrange)
+            QuickStatCard(Icons.Default.DataUsage, "Data", connectionStats.totalDownload, SuccessGreen)
         }
     }
 
@@ -385,9 +385,9 @@ class MainActivity : ComponentActivity() {
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = DarkSurfaceVariant), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(icon, label, tint = color, modifier = Modifier.size(24.dp))
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text(label, fontSize = 12.sp, color = TextTertiary)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(label, fontSize = 12.sp, color = TextTertiary)
             }
         }
     }
@@ -397,10 +397,10 @@ class MainActivity : ComponentActivity() {
             Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Public, "Server", tint = ProtonPurple, modifier = Modifier.size(28.dp))
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
                         Text("Current Server", fontSize = 12.sp, color = TextTertiary)
-        Text(currentServer?.let { "${it.flag} ${it.name}" } ?: "Select Server", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(currentServer?.let { "${it.flag} ${it.name}" } ?: "Select Server", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Change", tint = TextSecondary)
@@ -412,7 +412,7 @@ class MainActivity : ComponentActivity() {
     private fun ServerListScreen() {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Text("Select Server", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(getAvailableServers()) { server ->
                     ServerListItem(server, currentServer?.id == server.id) {
                         currentServer = server
@@ -430,13 +430,13 @@ class MainActivity : ComponentActivity() {
             Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(server.flag, fontSize = 32.sp)
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
                         Text(server.name, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Row {
+            Row {
                             Text("${server.latency}ms", fontSize = 12.sp, color = if (server.latency < 50) SuccessGreen else if (server.latency < 150) ProtonOrange else ErrorRed)
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("${server.load}% load", fontSize = 12.sp, color = TextTertiary)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("${server.load}% load", fontSize = 12.sp, color = TextTertiary)
                         }
                     }
                 }
@@ -448,20 +448,20 @@ class MainActivity : ComponentActivity() {
     private fun StatisticsScreen() {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text("Statistics", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
-        StatCard("Download Speed", connectionStats.downloadSpeed, Icons.Default.Speed, ProtonPurple)
-        Spacer(modifier = Modifier.height(12.dp))
-        StatCard("Upload Speed", connectionStats.uploadSpeed, Icons.Default.Cloud, ProtonOrange)
-        Spacer(modifier = Modifier.height(12.dp))
-        StatCard("Total Downloaded", connectionStats.totalDownload, Icons.Default.DataUsage, SuccessGreen)
-        Spacer(modifier = Modifier.height(12.dp))
-        StatCard("Connection Time", connectionStats.connectionTime, Icons.Default.Timer, ProtonPurple)
+            StatCard("Download Speed", connectionStats.downloadSpeed, Icons.Default.Speed, ProtonPurple)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatCard("Upload Speed", connectionStats.uploadSpeed, Icons.Default.Cloud, ProtonOrange)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatCard("Total Downloaded", connectionStats.totalDownload, Icons.Default.DataUsage, SuccessGreen)
+            Spacer(modifier = Modifier.height(12.dp))
+            StatCard("Connection Time", connectionStats.connectionTime, Icons.Default.Timer, ProtonPurple)
             if (sniTorStatus.chainActive) {
                 Spacer(modifier = Modifier.height(24.dp))
-        Text("SNI → Tor Chain Status", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(12.dp))
-        ChainStatusRow("SNI Handler", sniTorStatus.sniConnected)
-        ChainStatusRow("Tor Circuit", sniTorStatus.torConnected)
-        ChainStatusRow("Full Chain", sniTorStatus.chainActive)
+            Text("SNI → Tor Chain Status", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(12.dp))
+            ChainStatusRow("SNI Handler", sniTorStatus.sniConnected)
+            ChainStatusRow("Tor Circuit", sniTorStatus.torConnected)
+            ChainStatusRow("Full Chain", sniTorStatus.chainActive)
             }
         }
     }
@@ -470,7 +470,7 @@ class MainActivity : ComponentActivity() {
     private fun ChainStatusRow(label: String, active: Boolean) {
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontSize = 14.sp, color = TextSecondary)
-        Badge(containerColor = if (active) SuccessGreen else DarkSurfaceVariant, contentColor = if (active) TextPrimary else TextTertiary) {
+            Badge(containerColor = if (active) SuccessGreen else DarkSurfaceVariant, contentColor = if (active) TextPrimary else TextTertiary) {
                 Text(if (active) "ACTIVE" else "INACTIVE", fontSize = 10.sp)
             }
         }
@@ -482,10 +482,10 @@ class MainActivity : ComponentActivity() {
             Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(icon, title, tint = color, modifier = Modifier.size(32.dp))
-        Spacer(modifier = Modifier.width(16.dp))
-        Column {
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
                         Text(title, fontSize = 14.sp, color = TextTertiary)
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -495,22 +495,22 @@ class MainActivity : ComponentActivity() {
     private fun SettingsScreen() {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
-        SettingsSection("Connection") {
+            SettingsSection("Connection") {
                 SettingsSwitch("Tor Integration", "Route traffic through Tor network", torEnabled) { torEnabled = it; savePreferences() }
                 SettingsSwitch("SNI Proxy", "Enable SNI hostname spoofing", sniEnabled) { sniEnabled = it; savePreferences() }
                 SettingsSwitch("Kill Switch", "Block internet if VPN disconnects", killSwitchEnabled) { killSwitchEnabled = it; savePreferences() }
             }
             Spacer(modifier = Modifier.height(24.dp))
-        SettingsSection("SNI Configuration") {
+            SettingsSection("SNI Configuration") {
                 OutlinedTextField(value = sniHostname, onValueChange = { sniHostname = it }, modifier = Modifier.fillMaxWidth(), label = { Text("SNI Hostname") }, placeholder = { Text("e.g., cdn.example.com") }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ProtonPurple, unfocusedBorderColor = DividerColor))
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(onClick = { sniHostname = ""; savePreferences(); Toast.makeText(this@MainActivity, "SNI randomized", Toast.LENGTH_SHORT).show() }, modifier = Modifier.fillMaxWidth()) { Text("Randomize SNI") }
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedButton(onClick = { sniHostname = ""; savePreferences(); Toast.makeText(this@MainActivity, "SNI randomized", Toast.LENGTH_SHORT).show() }, modifier = Modifier.fillMaxWidth()) { Text("Randomize SNI") }
             }
             Spacer(modifier = Modifier.height(24.dp))
-        SettingsSection("About") {
+            SettingsSection("About") {
                 SettingsInfoRow("Version", "2.0.0")
-        SettingsInfoRow("Build", "Phase 2 Complete")
-        SettingsInfoRow("Architecture", "SNI → Tor Chain")
+            SettingsInfoRow("Build", "Phase 2 Complete")
+            SettingsInfoRow("Architecture", "SNI → Tor Chain")
             }
         }
     }
@@ -519,7 +519,7 @@ class MainActivity : ComponentActivity() {
     private fun SettingsSection(title: String, content: @Composable () -> Unit) {
         Column {
             Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ProtonPurple)
-        Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             content()
         }
     }
@@ -530,7 +530,7 @@ class MainActivity : ComponentActivity() {
             Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(label, fontSize = 16.sp)
-        Text(description, fontSize = 12.sp, color = TextTertiary)
+            Text(description, fontSize = 12.sp, color = TextTertiary)
                 }
                 Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = ProtonPurple))
             }
@@ -540,7 +540,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun SettingsInfoRow(label: String, value: String) {        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontSize = 14.sp, color = TextSecondary)
-        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 
@@ -550,10 +550,10 @@ class MainActivity : ComponentActivity() {
         AlertDialog(onDismissRequest = { showSniEditor = false }, title = { Text("Configure SNI Hostname") }, text = {
             Column {
                 Text("Enter a hostname to spoof in TLS Client Hello:", color = TextSecondary, fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(value = inputValue, onValueChange = { inputValue = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g., cdn.cloudflare.com") }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ProtonPurple, unfocusedBorderColor = DividerColor))
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Leave empty for randomized SNI", color = TextTertiary, fontSize = 12.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(value = inputValue, onValueChange = { inputValue = it }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("e.g., cdn.cloudflare.com") }, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = ProtonPurple, unfocusedBorderColor = DividerColor))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Leave empty for randomized SNI", color = TextTertiary, fontSize = 12.sp)
             }
         }, confirmButton = { TextButton(onClick = { sniHostname = inputValue; savePreferences(); showSniEditor = false }) { Text("Apply", color = ProtonPurple) } }, dismissButton = { TextButton(onClick = { showSniEditor = false }) { Text("Cancel") } }, containerColor = DarkSurfaceVariant)
     }
@@ -587,7 +587,8 @@ class MainActivity : ComponentActivity() {
                 delay(2000)
                 connectionPhase = ConnectionPhase.CONNECTING_SNI
                 connectionStatus = "Step 2/3: Starting SNI Proxy..."
-        sniTorStatus = sniTorStatus.copy(sniConnected = true)                delay(1000)
+        sniTorStatus = sniTorStatus.copy(sniConnected = true)
+                delay(1000)
                 connectionPhase = ConnectionPhase.CONNECTING_TOR
                 connectionStatus = "Step 3/3: Bootstrapping Tor..."
         for (i in 1..100 step 10) {
@@ -622,7 +623,7 @@ class MainActivity : ComponentActivity() {
             connectionStatus = "Disconnected"
         sniTorStatus = SniTorStatus(false, false, false, 0)
             connectionStats = ConnectionStats("0 Mbps", "0 Mbps", "0 MB", "0 MB", "00:00:00", "-- ms")
-        Log.d(TAG, "VPN disconnected")
+            Log.d(TAG, "VPN disconnected")
         } catch (e: Exception) { Log.e(TAG, "Failed to stop VPN", e) }
     }
 
