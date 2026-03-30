@@ -144,7 +144,8 @@ pub const DOH_ENDPOINTS: &[&str] = &[
     "https://1.1.1.1/dns-query",      // Cloudflare
     "https://8.8.8.8/dns-query",      // Google
     "https://9.9.9.9/dns-query",      // Quad9
-    "https://208.67.222.222/dns-query", // OpenDNS];
+    "https://208.67.222.222/dns-query",      // OpenDNS
+];
 
 /// Tor default configuration
 pub const TOR_DEFAULT_SOCKS_PORT: u16 = 9150;
