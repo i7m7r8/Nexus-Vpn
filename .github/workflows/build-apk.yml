@@ -2,101 +2,80 @@ name: Build and Release Nexus VPN
 
 on:
   push:
-    branches:
-      - main
-      - release
+    branches: [main, release]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: aarch64-linux-android,x86_64-linux-android
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        targets: aarch64-linux-android,x86_64-linux-android
 
-      - name: Setup NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r27
-          add-to-path: true
+    - name: Setup NDK
+      uses: nttld/setup-ndk@v1
+      id: ndk
+      with:
+        ndk-version: r27
+        add-to-path: true
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '25'
 
-      - name: Configure NDK
-        run: |
-          echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-          TOOLCHAIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          echo "$TOOLCHAIN" >> $GITHUB_PATH
-          echo "CC_aarch64_linux_android=${TOOLCHAIN}/aarch64-linux-android24-clang" >> $GITHUB_ENV
-          echo "CXX_aarch64_linux_android=${TOOLCHAIN}/aarch64-linux-android24-clang++" >> $GITHUB_ENV
-          echo "CC_x86_64_linux_android=${TOOLCHAIN}/x86_64-linux-android24-clang" >> $GITHUB_ENV
-          echo "CXX_x86_64_linux_android=${TOOLCHAIN}/x86_64-linux-android24-clang++" >> $GITHUB_ENV
-      - name: Build Rust ARM64
-        run: |
-          cd rust/core
-          cargo build --release --target aarch64-linux-android
+    - name: Configure NDK
+      run: echo "NDK_HOME=${{ steps.ndk.outputs.ndk-path }}" >> $GITHUB_ENV
 
-      - name: Build Rust X86_64
-        run: |
-          cd rust/core
-          cargo build --release --target x86_64-linux-android
+    - name: Build Rust ARM64
+      run: cd rust/core && cargo build --release --target aarch64-linux-android
 
-      - name: Copy Libraries
-        run: |
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          mkdir -p android/app/src/main/jniLibs/x86_64
-          cp rust/target/aarch64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/arm64-v8a/
-          cp rust/target/x86_64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/x86_64/
+    - name: Build Rust X86_64
+      run: cd rust/core && cargo build --release --target x86_64-linux-android
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.4.1'
+    - name: Copy Libraries
+      run: mkdir -p android/app/src/main/jniLibs/arm64-v8a android/app/src/main/jniLibs/x86_64 && cp rust/target/aarch64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/arm64-v8a/ && cp rust/target/x86_64-linux-android/release/libnexus_vpn_core.so android/app/src/main/jniLibs/x86_64/
 
-      - name: Build APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug assembleRelease
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '9.4.1'
 
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: nexus-vpn-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: ignore
+    - name: Build APK
+      run: cd android && chmod +x gradlew && ./gradlew assembleDebug assembleRelease
 
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: nexus-vpn-release
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: ignore
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: nexus-vpn-debug
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        if-no-files-found: ignore
 
-      - name: Create Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.0
-          name: Nexus VPN v1.0.0
-          body: Nexus VPN with SNI to Tor Chain          files: android/app/build/outputs/apk/release/app-release-unsigned.apk
-          draft: false
-          prerelease: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: nexus-vpn-release
+        path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+        if-no-files-found: ignore
+
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v1.0.0
+        name: Nexus VPN v1.0.0
+        body: Nexus VPN with SNI to Tor Chain
+        files: android/app/build/outputs/apk/release/app-release-unsigned.apk
+        draft: false
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
