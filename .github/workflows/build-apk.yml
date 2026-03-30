@@ -1,4 +1,4 @@
-name: Build & Release Nexus VPN
+name: Build and Release Nexus VPN
 
 on:
   push:
@@ -35,41 +35,27 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 25
+          java-version: '25'
 
-      - name: Setup Android Build Tools
-        uses: android-actions/setup-android@v3
-
-      - name: Configure NDK for Rust
+      - name: Configure NDK
         run: |
-          export NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
-          export ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}
           echo "NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
-                    # Set up clang paths
-          export TOOLCHAIN=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64
-          export PATH=$TOOLCHAIN/bin:$PATH
-          echo "$TOOLCHAIN/bin" >> $GITHUB_PATH
-          
-          # Set compiler variables
-          export CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android24-clang
-          export CXX_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android24-clang++
-          export CC_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android24-clang
-          export CXX_x86_64_linux_android=$TOOLCHAIN/bin/x86_64-linux-android24-clang
-          
-          echo "CC_aarch64_linux_android=$CC_aarch64_linux_android" >> $GITHUB_ENV
-          echo "CXX_aarch64_linux_android=$CXX_aarch64_linux_android" >> $GITHUB_ENV
-          echo "CC_x86_64_linux_android=$CC_x86_64_linux_android" >> $GITHUB_ENV
-          echo "CXX_x86_64_linux_android=$CXX_x86_64_linux_android" >> $GITHUB_ENV
-          
-          # Verify compiler exists
-          ls -la $TOOLCHAIN/bin/*android*clang | head -5
-
+          TOOLCHAIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "$TOOLCHAIN" >> $GITHUB_PATH
+          echo "CC_aarch64_linux_android=${TOOLCHAIN}/aarch64-linux-android24-clang" >> $GITHUB_ENV
+          echo "CXX_aarch64_linux_android=${TOOLCHAIN}/aarch64-linux-android24-clang++" >> $GITHUB_ENV
+          echo "CC_x86_64_linux_android=${TOOLCHAIN}/x86_64-linux-android24-clang" >> $GITHUB_ENV
+          echo "CXX_x86_64_linux_android=${TOOLCHAIN}/x86_64-linux-android24-clang++" >> $GITHUB_ENV
       - name: Build Rust ARM64
-        run: cd rust/core && cargo build --release --target aarch64-linux-android
+        run: |
+          cd rust/core
+          cargo build --release --target aarch64-linux-android
 
       - name: Build Rust X86_64
-        run: cd rust/core && cargo build --release --target x86_64-linux-android
+        run: |
+          cd rust/core
+          cargo build --release --target x86_64-linux-android
 
       - name: Copy Libraries
         run: |
@@ -81,10 +67,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 9.4.1
+          gradle-version: '9.4.1'
 
       - name: Build APK
-        run: cd android && chmod +x gradlew && ./gradlew assembleDebug assembleRelease
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug assembleRelease
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -95,7 +84,8 @@ jobs:
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
-        with:          name: nexus-vpn-release
+        with:
+          name: nexus-vpn-release
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: ignore
 
@@ -105,8 +95,7 @@ jobs:
         with:
           tag_name: v1.0.0
           name: Nexus VPN v1.0.0
-          body: Nexus VPN with SNI to Tor Chain
-          files: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          body: Nexus VPN with SNI to Tor Chain          files: android/app/build/outputs/apk/release/app-release-unsigned.apk
           draft: false
           prerelease: true
         env:
