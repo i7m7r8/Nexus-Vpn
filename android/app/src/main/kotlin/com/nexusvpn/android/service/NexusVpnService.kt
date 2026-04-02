@@ -3,138 +3,116 @@ package com.nexusvpn.android.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
-import android.os.ParcelFileDescriptor
+import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.nexusvpn.android.MainActivity
 import com.nexusvpn.android.NexusVpnApplication
 import com.nexusvpn.android.R
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicBoolean
-
 
 class NexusVpnService : VpnService() {
     companion object {
         private const val TAG = "NexusVpnService"
-        private const val NOTIFICATION_CHANNEL_ID = "nexus_vpn_channel"
-        private const val NOTIFICATION_ID = 1
-        private const val TUN_ADDRESS = "10.8.0.2"
+        private const val CHAN_ID = "nexus_vpn"
+        private const val NOTIF_ID = 1
+        private const val TUN_ADDR = "10.8.0.2"
         private const val TUN_PREFIX = 32
         private const val TUN_MTU = 1500
 
         init { System.loadLibrary("nexus_vpn") }
 
-        external fun initVpnNative(tunFd: Int, sniHostname: String): Boolean
-        external fun runPacketLoopNative(): Boolean
-        external fun stopVpnNative()
-        external fun setSniHostnameNative(hostname: String): Boolean
-        external fun getTrafficStatsSentNative(): Long
-        external fun getTrafficStatsRecvNative(): Long
+        @JvmStatic external fun initVpnNative(tunFd: Int, sniHostname: String): Boolean
+        @JvmStatic external fun stopVpnNative()
+        @JvmStatic external fun setSniHostnameNative(hostname: String): Boolean
+
+        fun setSniHostnameNative(hostname: String) {
+            try { setSniHostnameNative(hostname) } catch (_: UnsatisfiedLinkError) {}
+        }
     }
 
-    private var tunFd: ParcelFileDescriptor? = null
-    private var packetLoopThread: Thread? = null
-    private val isRunning = AtomicBoolean(false)
+    private var tunFd: android.os.ParcelFileDescriptor? = null
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Initializing..."))
+        createChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            "CONNECT" -> startVpn()
-            "DISCONNECT" -> stopVpn()
+            "CONNECT" -> connect()
+            "DISCONNECT" -> disconnect()
+            "UPDATE_SNI" -> intent.getStringExtra("sni_host")?.let {
+                NexusVpnApplication.prefs.sniHostname = it
+                try { companion.setSniHostnameNative(it) } catch (_: Exception) {}
+            }
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
-    private fun startVpn() {
-        if (isRunning.get()) return
-        Log.i(TAG, "Starting VPN...")
-
+    private fun connect() {
         try {
-            val sniHost = NexusVpnApplication.prefs.sniHostname ?: "www.cloudflare.com"
-
-            tunFd = Builder()
-                .addAddress(TUN_ADDRESS, TUN_PREFIX)
+            val sni = NexusVpnApplication.prefs.sniHostname ?: "cdn.cloudflare.net"
+            val builder = Builder()
+                .addAddress(TUN_ADDR, TUN_PREFIX)
                 .addDnsServer("1.1.1.1")
-                .addDnsServer("1.0.0.1")
                 .addRoute("0.0.0.0", 0)
                 .setSession("Nexus VPN")
                 .setMtu(TUN_MTU)
-                .setBlocking(true)
-                .establish()
-                ?: throw IOException("VpnService.Builder.establish() returned null")
 
-            if (!initVpnNative(tunFd?.fd ?: return, sniHost)) {
-                stopVpn()
-                updateNotification("Failed to initialize VPN")
+            tunFd = builder.establish()
+                ?: return run { Log.e(TAG, "establish() returned null"); disconnect() }
+
+            if (!initVpnNative(tunFd!!.fd, sni)) {
+                Log.e(TAG, "initVpnNative returned false")
+                disconnect()
                 return
             }
 
-            isRunning.set(true)
-            updateNotification("Connected via Tor")
-            packetLoopThread = Thread({ runPacketLoopNative() }, "packet-loop").apply { start() }
-
-            Log.i(TAG, "VPN started")
+            startForeground(NOTIF_ID, notif("Connected via Tor"))
+            NexusVpnApplication.prefs.isVpnConnected = true
+            Log.i(TAG, "VPN started (SNI: $sni)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN", e)
-            stopVpn()
-            updateNotification("VPN connection failed")
+            disconnect()
         }
     }
 
-    private fun stopVpn() {
-        Log.i(TAG, "Stopping VPN...")
-        isRunning.set(false)
-        stopVpnNative()
-        packetLoopThread?.interrupt()
-        packetLoopThread = null
+    private fun disconnect() {
+        NexusVpnApplication.prefs.isVpnConnected = false
+        try { stopVpnNative() } catch (_: Exception) {}
         try { tunFd?.close() } catch (_: Exception) {}
         tunFd = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        val stopType = if (Build.VERSION.SDK_INT >= 29) {
+            STOP_FOREGROUND_PASS
+        } else {
+            @Suppress("DEPRECATION")
+            false
+        }
+        try { stopForeground(stopType) } catch (_: Exception) {}
         stopSelf()
-        Log.i(TAG, "VPN stopped")
+        Log.i(TAG, "VPN disconnected")
     }
 
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID,
-            "Nexus VPN",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply { description = "VPN connection status" }
-        val mgr = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        mgr.createNotificationChannel(channel)
+    private fun createChannel() {
+        val chan = NotificationChannel(CHAN_ID, "Nexus VPN", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "VPN connection status"
+        }
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(chan)
     }
 
-    private fun buildNotification(text: String) =
-        NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("Nexus VPN")
-            .setContentText(text)
-            .setSmallIcon(R.drawable.ic_vpn)
-            .setOngoing(true)
-            .setContentIntent(
-                PendingIntent.getActivity(
-                    this, 0,
-                    Intent(this, MainActivity::class.java),
-                    PendingIntent.FLAG_IMMUTABLE
-                )
-            )
-            .build()
+    private fun notif(text: String) = NotificationCompat.Builder(this, CHAN_ID)
+        .setContentTitle("Nexus VPN")
+        .setContentText(text)
+        .setSmallIcon(R.drawable.ic_vpn)
+        .setOngoing(true)
+        .setContentIntent(
+            PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        )
+        .build()
 
-    private fun updateNotification(text: String) {
-        val mgr = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        mgr.notify(NOTIFICATION_ID, buildNotification(text))
-    }
-
-    override fun onDestroy() {
-        stopVpn()
-        super.onDestroy()
-    }
+    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onDestroy() { disconnect(); super.onDestroy() }
 }

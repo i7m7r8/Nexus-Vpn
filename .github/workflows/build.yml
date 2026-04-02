@@ -3,16 +3,16 @@ name: Build & Release APK
 on:
   push:
     branches: [main]
-  workflow_call:
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
-  NDK_VERSION: "25.2.9519653"
-  RUST_VERSION: "1.75.0"
+  NDK_VERSION: "27.2.12479018"
+  RUST_VERSION: "stable"
 
 jobs:
-  build:
+  build-release:
+    name: Build & Release APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -28,31 +28,40 @@ jobs:
           cache: gradle
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.RUST_VERSION }}
           targets: aarch64-linux-android,x86_64-linux-android
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk
+        run: cargo install cargo-ndk --locked
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: ${{ env.NDK_VERSION }}
+          link-to-sdk: true
 
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v4
 
-      # ─── Build Rust core for both ABIs ─
+      # Build Rust lib for both architectures
       - name: Build Rust lib (arm64-v8a)
         working-directory: rust-core
-        run: cargo ndk -t aarch64-linux-android -o ../android/app/src/main/jniLibs build --release
+        run: |
+          mkdir -p ../android/app/src/main/jniLibs/arm64-v8a
+          cargo build --release --target aarch64-linux-android
+          cp target/aarch64-linux-android/release/libnexus_vpn.so \
+             ../android/app/src/main/jniLibs/arm64-v8a/
 
-      - name: Build Rust (x86_64)
+      - name: Build Rust lib (x86_64)
         working-directory: rust-core
-        run: cargo ndk -t x86_64-linux-android -o ../android/app/src/main/jniLibs build --release
+        run: |
+          mkdir -p ../android/app/src/main/jniLibs/x86_64
+          cargo build --release --target x86_64-linux-android
+          cp target/x86_64-linux-android/release/libnexus_vpn.so \
+             ../android/app/src/main/jniLibs/x86_64/
 
+      # Build Android APKs
       - name: Build debug APK
         working-directory: android
         run: chmod +x ./gradlew && ./gradlew assembleDebug
@@ -61,7 +70,7 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease
 
-      # ── Upload debug APK as artifact ─
+      # Upload APKs as artifacts
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
@@ -69,8 +78,9 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 90
 
-      # ─── Create release automatically ─
+      # Auto-create GitHub Release
       - name: Auto Release
         shell: bash
         env:
@@ -79,7 +89,6 @@ jobs:
           TAG_NAME="v$(date +%Y%m%d.%H%M%S)"
           gh release create "$TAG_NAME" \
             android/app/build/outputs/apk/debug/app-debug.apk \
-            android/app/build/outputs/apk/release/app-release-unsigned.apk \
-            --title "Auto-build $TAG_NAME" \
+            --title "Build $TAG_NAME" \
             --generate-notes \
             --latest

@@ -1,7 +1,0 @@
-[package]
-name = "sni"
-version = "1.0.0"
-edition = "2021"
-
-[dependencies]
-thiserror = "1.0"

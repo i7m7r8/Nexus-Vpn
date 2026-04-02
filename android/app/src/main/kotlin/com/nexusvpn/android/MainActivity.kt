@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,13 +27,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nexusvpn.android.data.PreferencesManager
 import com.nexusvpn.android.service.NexusVpnService
-import com.nexusvpn.android.ui.theme.NexusVpnTheme
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,49 +39,43 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NexusVpnApp() {
-    NexusVpnTheme {
-        var currentScreen by remember { mutableStateOf("connection") }
+    val darkBg = Color(0xFF0D1117)
+    val cardBg = Color(0xFF161B22)
+    val green = Color(0xFF3FB950)
+    val purple = Color(0xFFA371F7)
+    var screen by remember { mutableStateOf("home") }
 
-        Scaffold(
-            topBar = {
-                if (currentScreen == "settings") {
-                    SmallTopAppBar(
-                        title = { Text("Settings") },
-                        navigationIcon = {
-                            IconButton(onClick = { currentScreen = "connection" }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                        },
-                        colors = TopAppBarDefaults.smallTopAppBarColors(
-                            containerColor = Color(0xFF1B1B1F)
-                        )
-                    )
-                } else {
-                    SmallTopAppBar(
-                        title = { Text("Nexus VPN", fontWeight = FontWeight.Bold) },
-                        actions = {
-                            IconButton(onClick = { currentScreen = "settings" }) {
-                                Icon(Icons.Default.Settings, contentDescription = "Settings")
-                            }
-                        },
-                        colors = TopAppBarDefaults.smallTopAppBarColors(
-                            containerColor = Color(0xFF1B1B1F)
-                        )
-                    )
+    MaterialTheme(
+        colorScheme = darkColorScheme(primary = green, secondary = purple, background = darkBg, surface = cardBg)
+    ) {
+        Surface(modifier = Modifier.fillMaxSize().background(darkBg)) {
+            Column {
+                // Top Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (screen == "settings") {
+                        IconButton(onClick = { screen = "home" }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                    } else {
+                        Text("Nexus VPN", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                    }
+                    if (screen == "home") {
+                        IconButton(onClick = { screen = "settings" }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
+                        }
+                    }
                 }
-            }
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .background(Color(0xFF13131F))
-            ) {
-                when (currentScreen) {
-                    "connection" -> ConnectionScreen()
-                    "settings" -> SettingsScreen()
+
+                // Screen content
+                when (screen) {
+                    "home" -> HomeScreen(darkBg, cardBg, green, purple)
+                    "settings" -> SettingsScreen(darkBg, cardBg, green, purple)
                 }
             }
         }
@@ -92,385 +83,146 @@ fun NexusVpnApp() {
 }
 
 @Composable
-fun ConnectionScreen() {
-    val context = LocalContext.current
-    val prefs = (context.applicationContext as com.nexusvpn.android.NexusVpnApplication).prefs
-    val prefsObj = prefs
+fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
+    val ctx = LocalContext.current
+    val prefs = (ctx.applicationContext as NexusVpnApplication).prefs
+    var sniHost by remember { mutableStateOf(prefs.sniHostname ?: "cdn.cloudflare.net") }
+    var connected by remember { mutableStateOf(false) }
+    var elapsed by remember { mutableIntStateOf(0) }
 
-    var isConnected by remember { mutableStateOf(false) }
-    var connectionStateText by remember { mutableStateOf("Disconnected") }
-    var sniHost by remember { mutableStateOf(prefs.sniHostname ?: "www.cloudflare.com") }
-    var duration by remember { mutableStateOf("00:00:00") }
-
-    LaunchedEffect(isConnected) {
-        if (isConnected) {
-            var elapsed = 0L
-            while (true) {
-                elapsed += 1000
-                val h = elapsed / 3600000
-                val m = (elapsed % 3600000) / 60000
-                val s = (elapsed % 60000) / 1000
-                duration = String.format("%02d:%02d:%02d", h, m, s)
-                delay(1000)
-            }
-        } else {
-            duration = "00:00:00"
-        }
+    LaunchedEffect(connected) {
+        if (connected) {
+            while (true) { delay(1000); elapsed++ }
+        } else elapsed = 0
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Status indicator
+        // Status circle
         Box(
-            modifier = Modifier.size(120.dp),
+            Modifier.size(140.dp).clip(CircleShape).background(if (connected) green else purple.copy(0.2f)),
             contentAlignment = Alignment.Center
         ) {
-            Surface(
-                modifier = Modifier.size(100.dp),
-                shape = RoundedCornerShape(50),
-                color = if (isConnected) Color(0xFF01A981) else Color(0xFF8A2BE2),
-                tonalElevation = 4.dp
-            ) {}
-            Text(
-                text = if (isConnected) "🟢" else "⚡",
-                fontSize = 40.sp
-            )
+            Text(if (connected) "✓" else "⚡", fontSize = 48.sp, color = if (connected) Color.Black else Color.White)
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
+        Spacer(Modifier.height(12.dp))
         Text(
-            text = connectionStateText,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
+            if (connected) "Connected" else "Disconnected",
+            fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White
         )
-
-        if (isConnected) {
-            Text(
-                text = "Connected via Tor",
-                color = Color.Gray,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-            Text(
-                text = duration,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+        if (connected) {
+            val m = elapsed / 60; val s = elapsed % 60
+            Text("${m}m ${s}s", color = Color.Gray, fontSize = 16.sp)
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(Modifier.height(28.dp))
 
-        // Connect / Disconnect button
+        // CONNECT button
         Button(
             onClick = {
-                if (!isConnected) {
-                    val intent = VpnService.prepare(context)
-                    if (intent != null) {
-                        context.startActivity(intent)
-                        // After permission granted
-                        return@Button
-                    }
+                if (!connected) {
+                    val vp = VpnService.prepare(ctx)
+                    if (vp != null) { ctx.startActivity(vp); return@Button }
                     prefs.sniHostname = sniHost
-                    context.startService(
-                        Intent(context, NexusVpnService::class.java).apply { action = "CONNECT" }
-                    )
-                    connectionStateText = "Connecting…"
-                    isConnected = true
+                    ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "CONNECT" })
+                    connected = true
                 } else {
-                    context.startService(
-                        Intent(context, NexusVpnService::class.java).apply { action = "DISCONNECT" }
-                    )
-                    connectionStateText = "Disconnected"
-                    isConnected = false
+                    ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "DISCONNECT" })
+                    connected = false
                 }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isConnected) Color(0xFFFF5252) else Color(0xFF8A2BE2),
-                contentColor = Color.White
-            ),
-            shape = RoundedCornerShape(28.dp)
+            Modifier.fillMaxWidth().height(60.dp),
+            shape = RoundedCornerShape(30.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = if (connected) Color(0xFFFA1946) else green)
         ) {
-            Text(
-                text = if (isConnected) "DISCONNECT" else "   CONNECT   ",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Text(if (connected) "DISCONNECT" else "CONNECT", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
         }
+        Spacer(Modifier.height(24.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // SNI Configuration Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F1F2E)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "SNI Configuration",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
+        // SNI card
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = cardBg), shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("🔥 SNI Routing", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 16.sp)
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = sniHost,
-                    onValueChange = { sniHost = it },
+                    sniHost, { sniHost = it },
                     label = { Text("SNI Hostname") },
+                    modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color(0xFFAAAAAA),
-                        focusedContainerColor = Color(0xFF13131F),
-                        unfocusedContainerColor = Color(0xFF13131F),
-                        focusedBorderColor = Color(0xFF8A2BE2),
-                        unfocusedBorderColor = Color.Gray
-                    ),
-                    modifier = Modifier.fillMaxWidth()
+                        focusedTextColor = Color.White, unfocusedTextColor = Color.Gray,
+                        focusedBorderColor = green, unfocusedBorderColor = Color.Gray
+                    )
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        prefs.sniHostname = sniHost
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF01A981)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Apply SNI Change", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Button({ prefs.sniHostname = sniHost; NexusVpnService.setSniHostnameNative(sniHost) },
+                    colors = ButtonDefaults.buttonColors(containerColor = purple), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text("Apply SNI Change", fontWeight = FontWeight.Bold)
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Quick Settings Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = 0xFF1F1F2E)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16)) {
-                Text(
-                    text = "Quick Settings",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                ToggleSettingRow(
-                    title = "Kill Switch",
-                    checked = prefsObj.killSwitch,
-                    onCheckedChange = { prefsObj.killSwitch = it }
-                )
-                HorizontalDivider(color = Color.Gray.copy(alpha = 2f))
-                ToggleSettingRow(
-                    title = "Always-on VPN",
-                    checked = prefsObj.alwaysOnVpn,
-                    onCheckedChange = { prefsObj.alwaysOnVpn = it }
-                )
-                HorizontalDivider(color = Color.Gray.copy(alpha = 0.2f))
-                ToggleSettingRow(
-                    title = "Auto-connect WiFi",
-                    checked = prefsObj.autoConnectWifi,
-                    onCheckedChange = { prefsObj.autoConnectWifi = it }
-                )
+        Spacer(Modifier.height(16.dp))
+        // Stats card
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = cardBg), shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("⚡ Quick Settings", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 16.sp)
+                ToggleRow("Kill Switch", prefs.killSwitch, { prefs.killSwitch = it })
+                HorizontalDivider(color = Color.Gray.copy(0.2f))
+                ToggleRow("Always-On VPN", prefs.alwaysOnVpn, { prefs.alwaysOnVpn = it })
+                HorizontalDivider(color = Color.Gray.copy(0.2f))
+                ToggleRow("Auto-Connect WiFi", prefs.autoConnectWifi, { prefs.autoConnectWifi = it })
             }
         }
     }
 }
 
 @Composable
-fun ToggleSettingRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(title, color = Color.White, fontSize = 14.sp)
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color(0xFF01A981),
-                checkedTrackColor = Color(0xFF01A981).copy(alpha = 0.5f)
-            )
-        )
+fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Color.White, fontSize = 14.sp)
+        Switch(checked, onChange)
     }
 }
 
-// ---------- Settings Screen ----------
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
-    val prefs = NexusVpnApplication.prefs
+fun SettingsScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
+    val prefs = (LocalContext.current.applicationContext as NexusVpnApplication).prefs
+    var bridgeType by remember { mutableStateOf(prefs.bridgeType) }
+    var customBridge by remember { mutableStateOf(prefs.customBridgeLine ?: "") }
     var useBridges by remember { mutableStateOf(prefs.useBridges) }
-    var bridgeType by remember { mutableStateOf(prefs.bridgeType ?: "obfs4") }
-    var customBridgeLine by remember { mutableStateOf(prefs.customBridgeLine ?: "") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-    ) {
-        Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Bridge Configuration
-        Text("Bridge Configuration", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F1F2E)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                SwitchSettingRow("Use Bridges", useBridges, {
-                    useBridges = it
-                    prefs.useBridges = it
-                })
-                HorizontalDivider(color = Color.Gray.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
-
-                Text("Bridge Type", color = Color.Gray, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val bridges = listOf("obfs4", "meek-amazon", "snowflake")
-                bridges.forEach { bridge ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                bridgeType = bridge
-                                prefs.bridgeType = bridge
-                            }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = bridgeType == bridge,
-                            onClick = {
-                                bridgeType = bridge
-                                prefs.bridgeType = bridge
-                            },
-                            colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF8A2BE2))
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(bridge, color = Color.White, fontSize = 14.sp)
+    Column(Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState())) {
+        Text("Settings", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Color.White)
+        Spacer(Modifier.height(12.dp))
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = cardBg), shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("🌐 Bridge Configuration", fontWeight = FontWeight.SemiBold, color = Color.White)
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Use Bridges", color = Color.White); Switch(useBridges, { useBridges = it; prefs.useBridges = it })
+                }
+                Spacer(Modifier.height(4.dp))
+                listOf("obfs4", "meek", "snowflake").forEach { bridge ->
+                    Row(Modifier.fillMaxWidth().clickable { bridgeType = bridge; prefs.bridgeType = bridge }.padding(vertical = 6.dp)) {
+                        RadioButton(bridgeType == bridge, { bridgeType = bridge; prefs.bridgeType = bridge }, colors = RadioButtonDefaults.colors(selectedColor = purple))
+                        Spacer(Modifier.width(8.dp)); Text(bridge, color = Color.White)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = customBridgeLine,
-                    onValueChange = { 
-                        customBridgeLine = it
-                        prefs.customBridgeLine = it
-                    },
-                    label = { Text("Custom Bridge Line") },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color(0xFFAAAAAA),
-                        focusedContainerColor = Color(0xFF13131F),
-                        unfocusedContainerColor = Color(0xFF13131F)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(customBridge, { prefs.customBridgeLine = it; customBridge = it },
+                    label = { Text("Custom Bridge Line") }, modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.Gray))
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Privacy & Security", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = 0xFF1F1F2E),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("• DNS Leak Protection Enabled", color = Color.White, fontSize = 14.sp)
-                Text("• IPv6 Leak Protection Enabled", color = Color.White, fontSize = 14.sp)
-                Text("• Real IP Leak Protection", color = Color.White, fontSize = 14.sp)
-                Text("• All traffic routed through Tor", color = Color.White, fontSize = 14.sp)
+        Spacer(Modifier.height(12.dp))
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = cardBg), shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("🛡 Security", fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text("✅ No Logs", color = Color.Gray, fontSize = 12.sp)
+                Text("✅ Kill Switch", color = Color.Gray, fontSize = 12.sp)
+                Text("✅ Pure Rust Tor (Arti)", color = Color.Gray, fontSize = 12.sp)
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Connection Logs", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = 0xFF1F1F2E),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable {}
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("View Connection Logs", color = Color.White, fontSize = 14.sp)
-                Text("→", color = Color.Gray)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("About", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F1F2E)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Nexus VPN", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("v1.0.0", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Pure Rust Tor + SNI VPN", color = Color.Gray, fontSize = 12.sp)
-                Text("No telemetry, no logs, no tracking", color = Color.Gray, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = {
-                        prefs.clear()
-                        useBridges = false
-                        prefs.useBridges = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Reset to Defaults", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
     }
 }

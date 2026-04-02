@@ -1,23 +1,18 @@
 package com.nexusvpn.android.ui.theme
 
 import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = ConnectedGreen,
-    secondary = ConnectPurple,
-    tertiary = DisconnectRed,
-    background = DarkBackground,
-    surface = DarkSurface,
+    primary = Color(0xFF00D084),
+    secondary = Color(0xFF7C4DFF),
+    tertiary = Color(0xFFFF1744),
+    background = Color(0xFF121220),
+    surface = Color(0xFF1E1E2E),
     onPrimary = Color.White,
     onSecondary = Color.White,
     onTertiary = Color.White,
@@ -26,26 +21,18 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun NexusVpnTheme(
-    darkTheme: Boolean = true,
-    dynamicColor: Boolean = false,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = DarkColorScheme
+fun NexusVpnTheme(content: @Composable () -> Unit) {
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = Color.Transparent.toArgb()
-            window.navigationBarColor = DarkBackground.toArgb()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                window.isStatusBarContrastEnforced = false
-            }
+            window.statusBarColor = android.graphics.Color.BLACK
+            window.navigationBarColor = android.graphics.Color.BLACK
         }
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = DarkColorScheme,
         typography = Typography,
         content = content
     )
