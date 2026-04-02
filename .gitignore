@@ -1,0 +1,13 @@
+/target
+android/app/build
+android/.gradle
+android/.kotlin
+android/.idea
+android/local.properties
+*.apk
+*.aab
+*.log
+*.iml
+.rustup/toolchains
+.DS_Store
+.env.*

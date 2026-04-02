@@ -1,0 +1,36 @@
+[package]
+name = "nexus-vpn"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+name = "nexus_vpn"
+crate-type = ["cdylib"]
+
+[dependencies]
+# JNI bridge to Android
+jni = "0.21"
+
+# Logging on Android
+log = "0.4"
+android_logger = "0.13"
+
+# Pure Rust Tor implementation
+arti-client = "0.17"
+arti-hsconfig = "0.17"
+
+# Event-driven I/O for TUN fd
+mio = { version = "0.8", features = ["os-poll", "os-ext"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Bytes handling
+bytes = "1.5"
+
+# SNI rewriting (local module)
+sni = { path = "src/sni" }
