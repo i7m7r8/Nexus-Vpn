@@ -7,11 +7,10 @@ use jni::objects::JString;
 use jni::sys::{jboolean, jint};
 use jni::JNIEnv;
 use std::cell::RefCell;
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::{FromRawFd as _, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use arti_client::{TorClient, TorClientConfig, StreamPrefs};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use arti_client::{TorClient, TorClientConfig};
 
 // ===========================================================================
 // Global state (one session per VPN connection)

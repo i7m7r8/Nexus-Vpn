@@ -7,7 +7,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  NDK_VERSION: "27.2.12479018"
   RUST_VERSION: "stable"
 
 jobs:
@@ -35,11 +34,19 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: ${{ env.NDK_VERSION }}
-          link-to-sdk: true
+      - name: Setup Android NDK 27
+        shell: bash
+        run: |
+          NDK_URL="https://dl.google.com/android/repository/android-ndk-r27c-linux.zip"
+          echo "⬇️ Downloading NDK..."
+          curl -L "$NDK_URL" -o /tmp/ndk.zip
+          echo "📦 Extracting..."
+          unzip -q /tmp/ndk.zip -d /opt/android/ndk
+          ANDROID_NDK_HOME="/opt/android/android-ndk-r27c"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          echo "android_ndk_version=r27c" >> $GITHUB_ENV
+          echo "📍 NDK installed at $ANDROID_NDK_HOME"
+          ls "$ANDROID_NDK_HOME"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -49,7 +56,7 @@ jobs:
         working-directory: rust-core
         run: |
           mkdir -p ../android/app/src/main/jniLibs/arm64-v8a
-          cargo build --release --target aarch64-linux-android
+          cargo ndk -t arm64-v8a build --release
           cp target/aarch64-linux-android/release/libnexus_vpn.so \
              ../android/app/src/main/jniLibs/arm64-v8a/
 
@@ -57,7 +64,7 @@ jobs:
         working-directory: rust-core
         run: |
           mkdir -p ../android/app/src/main/jniLibs/x86_64
-          cargo build --release --target x86_64-linux-android
+          cargo ndk -t x86_64 build --release
           cp target/x86_64-linux-android/release/libnexus_vpn.so \
              ../android/app/src/main/jniLibs/x86_64/
 
@@ -89,6 +96,7 @@ jobs:
           TAG_NAME="v$(date +%Y%m%d.%H%M%S)"
           gh release create "$TAG_NAME" \
             android/app/build/outputs/apk/debug/app-debug.apk \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk \
             --title "Build $TAG_NAME" \
             --generate-notes \
             --latest
