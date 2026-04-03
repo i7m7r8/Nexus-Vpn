@@ -43,13 +43,14 @@ impl log::Log for DualLogger {
     fn log(&self, record: &log::Record) {
         let msg = format!("{}", record.args());
 
-        // Write to Android logcat (via android_log_sys's underlying mechanism)
-        let android_level = match record.level() {
-            log::Level::Error => android_log_sys::AndroidLogPriority::Error as i32,
-            log::Level::Warn => android_log_sys::AndroidLogPriority::Warn as i32,
-            log::Level::Info => android_log_sys::AndroidLogPriority::Info as i32,
-            log::Level::Debug => android_log_sys::AndroidLogPriority::Debug as i32,
-            log::Level::Trace => android_log_sys::AndroidLogPriority::Verbose as i32,
+        // Write to Android logcat using raw __android_log_write
+        // android_log_sys 0.3 uses AndroidLogPriority enum
+        let android_level: i32 = match record.level() {
+            log::Level::Error => 6, // ANDROID_LOG_ERROR
+            log::Level::Warn => 5,  // ANDROID_LOG_WARN
+            log::Level::Info => 4,  // ANDROID_LOG_INFO
+            log::Level::Debug => 3, // ANDROID_LOG_DEBUG
+            log::Level::Trace => 2, // ANDROID_LOG_VERBOSE
         };
         let tag = std::ffi::CString::new("NexusVpn").unwrap();
         let msg_c = std::ffi::CString::new(&msg[..msg.len().min(4000)]).unwrap_or_default();
@@ -204,7 +205,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogs
 ) -> jni::objects::JString<'a> {
     let buffer = LOG_BUFFER.read();
     let logs = buffer.join("\n");
-    env.new_string(&logs).unwrap_or_else(|_| env.new_string("").unwrap()).into_raw()
+    env.new_string(&logs).unwrap_or_else(|_| env.new_string("").unwrap())
 }
 
 /// Clear the log buffer.
@@ -271,7 +272,7 @@ impl SniInterceptor {
 // ===========================================================================
 
 use smoltcp::socket::udp::{Socket as UdpSocket, PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata};
-use smoltcp::socket::Socket;
+use smoltcp::socket::tcp::Socket as TcpSocket;
 use arti_client::{TorClient, TorClientConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use std::collections::{HashMap, HashSet};
@@ -513,7 +514,7 @@ async fn vpn_main_loop(
 
         // === 1. DNS forwarder — receive queries, forward through Tor ===
         let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
-        if let Ok((data, endpoint)) = dns_socket.recv() {
+        if let Ok((data, meta)) = dns_socket.recv() {
             let query = data.to_vec();
             let query_id = if query.len() >= 2 {
                 ((query[0] as u16) << 8) | (query[1] as u16)
@@ -521,7 +522,13 @@ async fn vpn_main_loop(
                 0
             };
 
-            log::debug!("🌐 DNS query #{} from {} ({} bytes)", query_id, endpoint, query.len());
+            // Extract source endpoint from UdpMetadata
+            let src_endpoint = smoltcp::wire::IpEndpoint {
+                addr: meta.endpoint.addr,
+                port: meta.endpoint.port,
+            };
+
+            log::debug!("🌐 DNS query #{} from {} ({} bytes)", query_id, src_endpoint, query.len());
 
             // Forward DNS query through Tor to 1.1.1.1:53
             let tor_clone = tor_client.clone();
@@ -586,7 +593,7 @@ async fn vpn_main_loop(
                     log::error!("❌ DNS forward: query #{} failed after 3 attempts: {}", query_id, e);
                 }
 
-                let _ = dns_setup_tx.send((query_id, endpoint, to_app_rx)).await;
+                let _ = dns_setup_tx.send((query_id, src_endpoint, to_app_rx)).await;
             });
         }
         drop(dns_socket);
@@ -595,7 +602,7 @@ async fn vpn_main_loop(
         while let Ok((query_id, endpoint, mut rx)) = dns_setup_rx.try_recv() {
             if let Ok(response) = rx.try_recv() {
                 let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
-                if let Err(e) = dns_socket.send_to(&response, endpoint) {
+                if let Err(e) = dns_socket.send_slice(&response, endpoint) {
                     log::error!("❌ DNS: failed to send response #{} to {}: {}", query_id, endpoint, e);
                 } else {
                     log::debug!("✍️ DNS response #{} sent to {}", query_id, endpoint);
@@ -618,7 +625,7 @@ async fn vpn_main_loop(
         });
         for (query_id, endpoint, response) in ready_dns {
             let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
-            if let Err(e) = dns_socket.send_to(&response, endpoint) {
+            if let Err(e) = dns_socket.send_slice(&response, endpoint) {
                 log::error!("❌ DNS: failed to send delayed response #{} to {}: {}", query_id, endpoint, e);
             } else {
                 log::debug!("✍️ DNS response #{} sent to {} (delayed)", query_id, endpoint);
@@ -649,75 +656,72 @@ async fn vpn_main_loop(
         // === 2b. Process inspecting sockets — read first data, SNI intercept, spawn bridge ===
         let mut done_inspecting: Vec<smoltcp::iface::SocketHandle> = Vec::new();
         for &handle in &inspecting {
-            if let Some(socket) = stack.socket_set.get_mut::<Socket>(handle) {
-                if let Socket::Tcp(tcp_socket) = socket {
-                    if !tcp_socket.can_recv() {
-                        continue; // No data yet, keep inspecting
-                    }
-
-                    // Read first payload
-                    let mut first_data = vec![0u8; 16384];
-                    let n = match tcp_socket.recv_slice(&mut first_data) {
-                        Ok(n) => n,
-                        Err(e) => {
-                            log::error!("❌ Failed to read from socket {:?}: {}", handle, e);
-                            done_inspecting.push(handle);
-                            continue;
-                        }
-                    };
-                    first_data.truncate(n);
-
-                    let endpoint = tcp_socket.remote_endpoint().unwrap();
-                    let target_port = endpoint.port;
-
-                    // Try SNI interception
-                    if let Some(real_host) = sni_interceptor.intercept(&mut first_data) {
-                        // SNI rewritten — connect to Tor with real hostname
-                        log::info!("🔗 Tor → {}:{} (SNI decoy: {})", real_host, target_port, sni_interceptor.current_decoy());
-                        let tor_clone = tor_client.clone();
-                        let setup_tx = setup_tx.clone();
-                        let fail_tx = fail_tx.clone();
-                        let first_data_clone = first_data.clone();
-
-                        tokio::spawn(async move {
-                            match tor_clone.connect((real_host.clone(), target_port)).await {
-                                Ok(tor_stream) => {
-                                    let (rx, tx) = Bridge::spawn(handle, tor_stream, first_data_clone);
-                                    let _ = setup_tx.send((handle, rx, tx)).await;
-                                }
-                                Err(e) => {
-                                    log::error!("❌ Tor connect to {}:{} failed: {}", real_host, target_port, e);
-                                    let _ = fail_tx.send(handle).await;
-                                }
-                            }
-                        });
-                    } else {
-                        // Not TLS ClientHello or no SNI — fallback to IP
-                        let target_host = endpoint.addr.to_string();
-                        log::info!("🔗 Tor → {}:{} (IP fallback, no SNI)", target_host, target_port);
-                        let tor_clone = tor_client.clone();
-                        let setup_tx = setup_tx.clone();
-                        let fail_tx = fail_tx.clone();
-                        let first_data_clone = first_data.clone();
-
-                        tokio::spawn(async move {
-                            match tor_clone.connect((target_host.clone(), target_port)).await {
-                                Ok(tor_stream) => {
-                                    let (rx, tx) = Bridge::spawn(handle, tor_stream, first_data_clone);
-                                    let _ = setup_tx.send((handle, rx, tx)).await;
-                                }
-                                Err(e) => {
-                                    log::error!("❌ Tor connect to {}:{} failed: {}", target_host, target_port, e);
-                                    let _ = fail_tx.send(handle).await;
-                                }
-                            }
-                        });
-                    }
-
-                    connecting.insert(handle);
-                    done_inspecting.push(handle);
-                }
+            let socket = stack.socket_set.get_mut::<TcpSocket>(handle);
+            if !socket.can_recv() {
+                continue; // No data yet, keep inspecting
             }
+
+            // Read first payload
+            let mut first_data = vec![0u8; 16384];
+            let n = match socket.recv_slice(&mut first_data) {
+                Ok(n) => n,
+                Err(e) => {
+                    log::error!("❌ Failed to read from socket {:?}: {}", handle, e);
+                    done_inspecting.push(handle);
+                    continue;
+                }
+            };
+            first_data.truncate(n);
+
+            let endpoint = socket.remote_endpoint().unwrap();
+            let target_port = endpoint.port;
+
+            // Try SNI interception
+            if let Some(real_host) = sni_interceptor.intercept(&mut first_data) {
+                // SNI rewritten — connect to Tor with real hostname
+                log::info!("🔗 Tor → {}:{} (SNI decoy: {})", real_host, target_port, sni_interceptor.current_decoy());
+                let tor_clone = tor_client.clone();
+                let setup_tx = setup_tx.clone();
+                let fail_tx = fail_tx.clone();
+                let first_data_clone = first_data.clone();
+
+                tokio::spawn(async move {
+                    match tor_clone.connect((real_host.clone(), target_port)).await {
+                        Ok(tor_stream) => {
+                            let (rx, tx) = Bridge::spawn(handle, tor_stream, first_data_clone);
+                            let _ = setup_tx.send((handle, rx, tx)).await;
+                        }
+                        Err(e) => {
+                            log::error!("❌ Tor connect to {}:{} failed: {}", real_host, target_port, e);
+                            let _ = fail_tx.send(handle).await;
+                        }
+                    }
+                });
+            } else {
+                // Not TLS ClientHello or no SNI — fallback to IP
+                let target_host = endpoint.addr.to_string();
+                log::info!("🔗 Tor → {}:{} (IP fallback, no SNI)", target_host, target_port);
+                let tor_clone = tor_client.clone();
+                let setup_tx = setup_tx.clone();
+                let fail_tx = fail_tx.clone();
+                let first_data_clone = first_data.clone();
+
+                tokio::spawn(async move {
+                    match tor_clone.connect((target_host.clone(), target_port)).await {
+                        Ok(tor_stream) => {
+                            let (rx, tx) = Bridge::spawn(handle, tor_stream, first_data_clone);
+                            let _ = setup_tx.send((handle, rx, tx)).await;
+                        }
+                        Err(e) => {
+                            log::error!("❌ Tor connect to {}:{} failed: {}", target_host, target_port, e);
+                            let _ = fail_tx.send(handle).await;
+                        }
+                    }
+                });
+            }
+
+            connecting.insert(handle);
+            done_inspecting.push(handle);
         }
         for handle in &done_inspecting {
             inspecting.remove(handle);
@@ -756,18 +760,15 @@ async fn vpn_main_loop(
         for handle in &disconnected_receivers {
             bridged.remove(handle);
             tor_senders.remove(handle);
-            tcp_sockets.retain(|_, h| *h != handle);
+            tcp_sockets.retain(|_, h| *h != *handle);
         }
 
         for (handle, data) in pending_writes {
-            if let Some(socket) = stack.socket_set.get_mut::<Socket>(handle) {
-                if let Socket::Tcp(tcp_socket) = socket {
-                    if tcp_socket.can_send() {
-                        let n = tcp_socket.send_slice(&data).unwrap_or(0);
-                        if n > 0 {
-                            log::debug!("✍️ Wrote {}/{} bytes to smoltcp {:?}", n, data.len(), handle);
-                        }
-                    }
+            let socket = stack.socket_set.get_mut::<TcpSocket>(handle);
+            if socket.can_send() {
+                let n = socket.send_slice(&data).unwrap_or(0);
+                if n > 0 {
+                    log::debug!("✍️ Wrote {}/{} bytes to smoltcp {:?}", n, data.len(), handle);
                 }
             }
         }
@@ -776,28 +777,25 @@ async fn vpn_main_loop(
         let mut stale_handles = Vec::new();
         for &handle in &bridged {
             if let Some(sender) = tor_senders.get(&handle) {
-                if let Some(socket) = stack.socket_set.get_mut::<Socket>(handle) {
-                    if let Socket::Tcp(tcp_socket) = socket {
-                        if tcp_socket.can_recv() {
-                            let mut data = vec![0u8; 8192];
-                            if let Ok(n) = tcp_socket.recv_slice(&mut data) {
-                                if n > 0 {
-                                    data.truncate(n);
-                                    if sender.try_send(data).is_err() {
-                                        log::debug!("🚫 Tor channel full (socket {:?}), dropping", handle);
-                                    }
-                                }
+                let socket = stack.socket_set.get_mut::<TcpSocket>(handle);
+                if socket.can_recv() {
+                    let mut data = vec![0u8; 8192];
+                    if let Ok(n) = socket.recv_slice(&mut data) {
+                        if n > 0 {
+                            data.truncate(n);
+                            if sender.try_send(data).is_err() {
+                                log::debug!("🚫 Tor channel full (socket {:?}), dropping", handle);
                             }
                         }
-                        // Detect closed sockets
-                        if tcp_socket.state() == smoltcp::socket::tcp::State::CloseWait
-                            || tcp_socket.state() == smoltcp::socket::tcp::State::Closed
-                            || tcp_socket.state() == smoltcp::socket::tcp::State::TimeWait
-                        {
-                            log::info!("🔌 Socket {:?} closed (state: {:?})", handle, tcp_socket.state());
-                            stale_handles.push(handle);
-                        }
                     }
+                }
+                // Detect closed sockets
+                if socket.state() == smoltcp::socket::tcp::State::CloseWait
+                    || socket.state() == smoltcp::socket::tcp::State::Closed
+                    || socket.state() == smoltcp::socket::tcp::State::TimeWait
+                {
+                    log::info!("🔌 Socket {:?} closed (state: {:?})", handle, socket.state());
+                    stale_handles.push(handle);
                 }
             }
         }
@@ -806,7 +804,7 @@ async fn vpn_main_loop(
             tor_senders.remove(handle);
             tor_receivers.remove(handle);
             // Also remove from tcp_sockets tracking
-            tcp_sockets.retain(|_, h| *h != handle);
+            tcp_sockets.retain(|_, h| *h != *handle);
         }
 
         // === 5. Write outgoing packets to TUN ===

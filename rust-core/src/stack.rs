@@ -122,7 +122,7 @@ impl NetStack {
         }
 
         // Check protocol is TCP
-        if packet[9] != IpProtocol::Tcp as u8 {
+        if packet[9] != u8::from(IpProtocol::Tcp) {
             return None;
         }
 

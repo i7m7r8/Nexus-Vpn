@@ -1,34 +1,47 @@
 //! SniRuntime — wraps an Arti runtime to spoof SNI on **relay-level TLS connections**.
 //!
-//! This is the core Invisible Pro feature: when Arti connects to a Tor guard relay,
-//! the TLS handshake uses the decoy hostname (e.g. `t.me`) as the SNI instead of
-//! the relay's real address. To a network observer, the TLS traffic looks like
-//! a normal connection to the decoy site.
+//! NOTE: In Arti 0.40.0, the `Runtime` trait requires implementing many sub-traits
+//! (Spawn, Blocking, CoarseTimeProvider, UdpProvider, Debug, NetStreamProvider for
+//! both SocketAddr and UnixSocketAddr). Rather than reimplement all of these, we
+//! delegate to the inner runtime for everything except TLS, where we intercept the
+//! SNI hostname.
 //!
 //! The decoy hostname is read from a shared `Arc<Mutex<String>>` so it can be
 //! updated at runtime via JNI without restarting the VPN.
 
 use tor_rtcompat::{
-    NetStreamProvider, SleepProvider, TlsProvider,
+    NetStreamProvider, SleepProvider, TlsProvider, Runtime, Blocking, CoarseTimeProvider,
+    UdpProvider,
 };
-use tor_rtcompat::tls::TlsConnector;
+use tor_rtcompat::tls::{TlsConnector, TlsAcceptorSettings};
 use std::sync::Arc;
 use std::time::Duration;
 use std::future::Future;
 use std::io::Error as IoError;
 use std::pin::Pin;
+use std::net::SocketAddr;
+use std::os::unix::net::SocketAddr as UnixSocketAddr;
+use std::fmt;
 
 // ===========================================================================
 // SniRuntime
 // ===========================================================================
 
 #[derive(Clone)]
-pub struct SniRuntime<R: tor_rtcompat::Runtime> {
+pub struct SniRuntime<R: Runtime> {
     inner: R,
     sni_host: Arc<parking_lot::Mutex<String>>,
 }
 
-impl<R: tor_rtcompat::Runtime> SniRuntime<R> {
+impl<R: Runtime> fmt::Debug for SniRuntime<R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SniRuntime")
+            .field("sni_host", &self.sni_host.lock())
+            .finish_non_exhaustive()
+    }
+}
+
+impl<R: Runtime> SniRuntime<R> {
     pub fn new(inner: R, sni_host: Arc<parking_lot::Mutex<String>>) -> Self {
         Self { inner, sni_host }
     }
@@ -42,33 +55,70 @@ impl<R: tor_rtcompat::Runtime> SniRuntime<R> {
     }
 }
 
-impl<R: tor_rtcompat::Runtime> SleepProvider for SniRuntime<R> {
+impl<R: Runtime> SleepProvider for SniRuntime<R> {
     type SleepFuture = R::SleepFuture;
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
         self.inner.sleep(duration)
     }
 }
 
-impl<R: tor_rtcompat::Runtime> NetStreamProvider for SniRuntime<R> {
+impl<R: Runtime> Blocking for SniRuntime<R> {
+    fn spawn_blocking<F, T>(&self, f: F) -> Self::SleepFuture
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.inner.spawn_blocking(f)
+    }
+}
+
+impl<R: Runtime> CoarseTimeProvider for SniRuntime<R> {
+    fn now(&self) -> std::time::SystemTime {
+        self.inner.now()
+    }
+}
+
+impl<R: Runtime> NetStreamProvider for SniRuntime<R> {
     type Stream = <R as NetStreamProvider>::Stream;
     type Listener = <R as NetStreamProvider>::Listener;
 
-    async fn connect<ADDR: std::net::ToSocketAddrs + Send>(
-        &self,
-        addr: &ADDR,
-    ) -> std::io::Result<Self::Stream> {
+    async fn connect(&self, addr: &SocketAddr) -> std::io::Result<Self::Stream> {
         self.inner.connect(addr).await
     }
 
-    async fn listen<ADDR: std::net::ToSocketAddrs + Send>(
-        &self,
-        addr: &ADDR,
-    ) -> std::io::Result<Self::Listener> {
+    async fn listen(&self, addr: &SocketAddr) -> std::io::Result<Self::Listener> {
         self.inner.listen(addr).await
     }
 }
 
-impl<R: tor_rtcompat::Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for SniRuntime<R> {
+impl<R: Runtime> NetStreamProvider<UnixSocketAddr> for SniRuntime<R> {
+    type Stream = <R as NetStreamProvider<UnixSocketAddr>>::Stream;
+    type Listener = <R as NetStreamProvider<UnixSocketAddr>>::Listener;
+
+    async fn connect(&self, addr: &UnixSocketAddr) -> std::io::Result<Self::Stream> {
+        self.inner.connect(addr).await
+    }
+
+    async fn listen(&self, addr: &UnixSocketAddr) -> std::io::Result<Self::Listener> {
+        self.inner.listen(addr).await
+    }
+}
+
+impl<R: Runtime> UdpProvider for SniRuntime<R> {
+    type UdpSocket = <R as UdpProvider>::UdpSocket;
+
+    fn udp_socket(&self) -> std::io::Result<Self::UdpSocket> {
+        self.inner.udp_socket()
+    }
+}
+
+impl<R: Runtime> futures::task::Spawn for SniRuntime<R> {
+    fn spawn_obj(&self, obj: futures::task::FutureObj<'static, ()>) -> Result<(), futures::task::SpawnError> {
+        self.inner.spawn_obj(obj)
+    }
+}
+
+impl<R: Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for SniRuntime<R> {
     type Connector = SniConnector<<R as TlsProvider<<R as NetStreamProvider>::Stream>>::Connector>;
     type Acceptor = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::Acceptor;
     type TlsStream = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::TlsStream;
@@ -81,8 +131,8 @@ impl<R: tor_rtcompat::Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for
         }
     }
 
-    fn tls_acceptor(&self, _settings: tor_rtcompat::tls::TlsAcceptorSettings) -> Self::Acceptor {
-        self.inner.tls_acceptor(tor_rtcompat::tls::TlsAcceptorSettings::default())
+    fn tls_acceptor(&self, settings: TlsAcceptorSettings) -> std::io::Result<Self::Acceptor> {
+        self.inner.tls_acceptor(settings)
     }
 
     fn supports_keying_material_export(&self) -> bool {
@@ -94,23 +144,13 @@ impl<R: tor_rtcompat::Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for
 // SniConnector — wraps the real connector, overrides SNI hostname
 // ===========================================================================
 
-/// Wraps a `TlsConnector` and replaces the `sni_hostname` parameter in
-/// `negotiate_unvalidated()` with the decoy hostname.
-///
-/// When Arti connects to a guard relay at `185.220.101.1:443`, it calls:
-///   connector.negotiate_unvalidated(stream, "185.220.101.1")
-///
-/// Our wrapper changes this to:
-///   inner.negotiate_unvalidated(stream, "t.me")
-///
-/// The TLS handshake then sends SNI = "t.me" instead of the relay's IP.
-/// The decoy hostname is read from a shared Arc<Mutex<String>> so it updates at runtime.
 #[derive(Clone)]
 pub struct SniConnector<C> {
     inner: C,
     sni_host: Arc<parking_lot::Mutex<String>>,
 }
 
+#[tor_rtcompat::async_trait]
 impl<S, C> TlsConnector<S> for SniConnector<C>
 where
     S: tor_rtcompat::StreamOps + Send + Unpin + 'static,
@@ -118,17 +158,13 @@ where
 {
     type Conn = C::Conn;
 
-    fn negotiate_unvalidated<'a>(
-        &'a self,
+    async fn negotiate_unvalidated(
+        &self,
         stream: S,
-        _sni_hostname: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Self::Conn, IoError>> + Send + 'a>> {
+        _sni_hostname: &str,
+    ) -> std::io::Result<Self::Conn> {
         let sni = self.sni_host.lock().clone();
-        let inner = self.inner.clone();
-
-        Box::pin(async move {
-            log::debug!("🎭 Relay TLS SNI spoofed: {} → {}", _sni_hostname, sni);
-            inner.negotiate_unvalidated(stream, &sni).await
-        })
+        log::debug!("🎭 Relay TLS SNI spoofed: {} → {}", _sni_hostname, sni);
+        self.inner.negotiate_unvalidated(stream, &sni).await
     }
 }
