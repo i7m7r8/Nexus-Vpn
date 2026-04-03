@@ -33,6 +33,8 @@ use crate::sni::rewriter::SniRewriter;
 static RUNNING: AtomicBool = AtomicBool::new(false);
 static RUNTIME: parking_lot::RwLock<Option<Runtime>> = parking_lot::RwLock::new(None);
 static SNI_HOST: parking_lot::RwLock<String> = parking_lot::RwLock::new(String::new());
+// Arc-based SNI host that can be updated at runtime (shared with SniInterceptor + SniRuntime)
+static SNI_HOST_SHARED: parking_lot::RwLock<Option<Arc<parking_lot::Mutex<String>>>> = parking_lot::RwLock::new(None);
 
 // ===========================================================================
 // JNI — exposed to Kotlin
@@ -61,7 +63,11 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
         .map(|h| h.into())
         .unwrap_or_default();
 
+    // Create shared SNI host (Arc<Mutex> for runtime updates)
+    let shared_sni = Arc::new(parking_lot::Mutex::new(host.clone()));
     *SNI_HOST.write() = host.clone();
+    *SNI_HOST_SHARED.write() = Some(shared_sni.clone());
+
     log::info!("🚀 Initializing Nexus VPN Core (SNI: {})", host);
     if !bridge_json.is_empty() {
         log::info!("🌉 Bridge config provided");
@@ -82,7 +88,7 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
     RUNNING.store(true, Ordering::SeqCst);
 
     rt.spawn(async move {
-        if let Err(e) = vpn_main_loop(tun_fd, host, bridge_json).await {
+        if let Err(e) = vpn_main_loop(tun_fd, shared_sni, bridge_json).await {
             log::error!("🚨 VPN Main Loop Error: {e}");
             RUNNING.store(false, Ordering::SeqCst);
         }
@@ -115,7 +121,13 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
     if let Ok(s) = env.get_string(&hostname) {
         let h: String = s.into();
         *SNI_HOST.write() = h.clone();
-        log::info!("📝 SNI hostname updated: {h}");
+        // Update shared SNI host (used by running SniInterceptor + SniRuntime)
+        if let Some(shared) = SNI_HOST_SHARED.read().clone() {
+            *shared.lock() = h.clone();
+            log::info!("📝 SNI hostname updated at runtime: {h}");
+        } else {
+            log::info!("📝 SNI hostname updated (will apply on next connect): {h}");
+        }
         true as jboolean
     } else {
         false as jboolean
@@ -127,12 +139,16 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 // ===========================================================================
 
 struct SniInterceptor {
-    decoy_host: String,
+    decoy_host: Arc<parking_lot::Mutex<String>>,
 }
 
 impl SniInterceptor {
-    fn new(decoy_host: String) -> Self {
-        Self { decoy_host }
+    fn new(shared_sni: Arc<parking_lot::Mutex<String>>) -> Self {
+        Self { decoy_host: shared_sni }
+    }
+
+    fn current_decoy(&self) -> String {
+        self.decoy_host.lock().clone()
     }
 
     /// Inspect payload. If it's a TLS ClientHello, extract the real hostname
@@ -154,13 +170,16 @@ impl SniInterceptor {
         // Parse real hostname from SNI
         let real_host = TlsParser::parse_sni(payload).ok()?;
 
+        // Read current decoy hostname (may have been updated at runtime)
+        let decoy = self.decoy_host.lock().clone();
+
         // Rewrite SNI extension to decoy hostname
-        if SniRewriter::rewrite_sni(payload, &self.decoy_host).is_err() {
+        if SniRewriter::rewrite_sni(payload, &decoy).is_err() {
             log::warn!("⚠️ Failed to rewrite SNI for {}", real_host);
             return None;
         }
 
-        log::info!("🎭 SNI rewritten: {} → {}", real_host, self.decoy_host);
+        log::info!("🎭 SNI rewritten: {} → {}", real_host, decoy);
         Some(real_host)
     }
 }
@@ -323,7 +342,11 @@ fn build_tor_config(bridge_config: &str) -> anyhow::Result<TorClientConfig> {
     Ok(TorClientConfig::default())
 }
 
-async fn vpn_main_loop(tun_fd: jint, sni_host: String, bridge_config: String) -> anyhow::Result<()> {
+async fn vpn_main_loop(
+    tun_fd: jint,
+    shared_sni: Arc<parking_lot::Mutex<String>>,
+    bridge_config: String,
+) -> anyhow::Result<()> {
     let tun = Arc::new(TunDevice::new(tun_fd)?);
     let mut stack = NetStack::new();
 
@@ -334,10 +357,11 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String, bridge_config: String) ->
     let _ = udp_socket.bind(smoltcp::wire::IpListenEndpoint::from(53));
     let dns_handle = stack.socket_set.add(udp_socket);
 
+    let sni_host = shared_sni.lock().clone();
     log::info!("🔄 Bootstrapping Arti (Tor) v0.40.0 with SNI Transport: {}...", sni_host);
 
     let runtime = PreferredRuntime::current()?;
-    let sni_runtime = SniRuntime::new(runtime.clone(), sni_host.clone());
+    let sni_runtime = SniRuntime::new(runtime.clone(), shared_sni.clone());
 
     // Build Tor config with optional bridge support
     let config = build_tor_config(&bridge_config)?;
@@ -363,7 +387,7 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String, bridge_config: String) ->
     log::info!("✅ TUN Device and NetStack initialized");
 
     let mut buf = vec![0u8; 16384];
-    let sni_interceptor = SniInterceptor::new(sni_host.clone());
+    let sni_interceptor = SniInterceptor::new(shared_sni.clone());
 
     // DNS forwarder state: maps query_id → (source_endpoint, response_receiver)
     let mut dns_pending: HashMap<u16, (smoltcp::wire::IpEndpoint, mpsc::Receiver<Vec<u8>>)> = HashMap::new();
@@ -536,7 +560,7 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String, bridge_config: String) ->
                     // Try SNI interception
                     if let Some(real_host) = sni_interceptor.intercept(&mut first_data) {
                         // SNI rewritten — connect to Tor with real hostname
-                        log::info!("🔗 Tor → {}:{} (SNI decoy: {})", real_host, target_port, sni_host);
+                        log::info!("🔗 Tor → {}:{} (SNI decoy: {})", real_host, target_port, sni_interceptor.current_decoy());
                         let tor_clone = tor_client.clone();
                         let setup_tx = setup_tx.clone();
                         let fail_tx = fail_tx.clone();

@@ -5,18 +5,16 @@
 //! the relay's real address. To a network observer, the TLS traffic looks like
 //! a normal connection to the decoy site.
 //!
-//! Additionally, app-level SNI rewriting are handled by `SniInterceptor` in `lib.rs`.
+//! The decoy hostname is read from a shared `Arc<Mutex<String>>` so it can be
+//! updated at runtime via JNI without restarting the VPN.
 
 use tor_rtcompat::{
-    NetStreamProvider, NetStreamListener, SleepProvider, TlsProvider, TlsConnector, CertifiedConn,
+    NetStreamProvider, NetStreamListener, SleepProvider, TlsProvider, TlsConnector,
 };
-use futures_io::{AsyncRead, AsyncWrite};
 use std::net::SocketAddr;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::sync::Arc;
 use std::time::Duration;
 use std::future::Future;
-use std::marker::PhantomData;
 use std::io::Error as IoError;
 
 // ===========================================================================
@@ -26,11 +24,11 @@ use std::io::Error as IoError;
 #[derive(Clone)]
 pub struct SniRuntime<R: tor_rtcompat::Runtime> {
     inner: R,
-    sni_host: String,
+    sni_host: Arc<parking_lot::Mutex<String>>,
 }
 
 impl<R: tor_rtcompat::Runtime> SniRuntime<R> {
-    pub fn new(inner: R, sni_host: String) -> Self {
+    pub fn new(inner: R, sni_host: Arc<parking_lot::Mutex<String>>) -> Self {
         Self { inner, sni_host }
     }
 
@@ -38,8 +36,8 @@ impl<R: tor_rtcompat::Runtime> SniRuntime<R> {
         &self.inner
     }
 
-    pub fn sni_host(&self) -> &str {
-        &self.sni_host
+    pub fn sni_host(&self) -> String {
+        self.sni_host.lock().clone()
     }
 }
 
@@ -99,10 +97,11 @@ impl<R: tor_rtcompat::Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for
 ///   inner.negotiate_unvalidated(stream, "t.me")
 ///
 /// The TLS handshake then sends SNI = "t.me" instead of the relay's IP.
+/// The decoy hostname is read from a shared Arc<Mutex<String>> so it updates at runtime.
 #[derive(Clone)]
 pub struct SniConnector<C> {
     inner: C,
-    sni_host: String,
+    sni_host: Arc<parking_lot::Mutex<String>>,
 }
 
 impl<S, C> TlsConnector<S> for SniConnector<C>
@@ -117,7 +116,7 @@ where
         stream: S,
         _sni_hostname: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<Self::Conn, IoError>> + Send + 'a>> {
-        let sni = self.sni_host.clone();
+        let sni = self.sni_host.lock().clone();
         let inner = self.inner.clone();
 
         Box::pin(async move {
@@ -126,9 +125,3 @@ where
         })
     }
 }
-
-// ===========================================================================
-// CertifiedConn passthrough for the wrapped connection type
-// ===========================================================================
-
-impl<C: CertifiedConn> CertifiedConn for SniConnector<C> {}
