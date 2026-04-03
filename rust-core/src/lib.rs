@@ -43,13 +43,13 @@ impl log::Log for DualLogger {
     fn log(&self, record: &log::Record) {
         let msg = format!("{}", record.args());
 
-        // Write to Android logcat (via android_logger's underlying mechanism)
+        // Write to Android logcat (via android_log_sys's underlying mechanism)
         let android_level = match record.level() {
-            log::Level::Error => android_log_sys::android_LogPriority::ANDROID_LOG_ERROR,
-            log::Level::Warn => android_log_sys::android_LogPriority::ANDROID_LOG_WARN,
-            log::Level::Info => android_log_sys::android_LogPriority::ANDROID_LOG_INFO,
-            log::Level::Debug => android_log_sys::android_LogPriority::ANDROID_LOG_DEBUG,
-            log::Level::Trace => android_log_sys::android_LogPriority::ANDROID_LOG_VERBOSE,
+            log::Level::Error => android_log_sys::AndroidLogPriority::Error as i32,
+            log::Level::Warn => android_log_sys::AndroidLogPriority::Warn as i32,
+            log::Level::Info => android_log_sys::AndroidLogPriority::Info as i32,
+            log::Level::Debug => android_log_sys::AndroidLogPriority::Debug as i32,
+            log::Level::Trace => android_log_sys::AndroidLogPriority::Verbose as i32,
         };
         let tag = std::ffi::CString::new("NexusVpn").unwrap();
         let msg_c = std::ffi::CString::new(&msg[..msg.len().min(4000)]).unwrap_or_default();
@@ -198,10 +198,10 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 /// Get all buffered log lines for the UI log viewer.
 /// Returns a single string with lines separated by '\n'.
 #[no_mangle]
-pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogsNative(
-    mut env: JNIEnv,
-    _class: jni::objects::JClass,
-) -> jni::objects::JString {
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogsNative<'a>(
+    mut env: JNIEnv<'a>,
+    _class: jni::objects::JClass<'a>,
+) -> jni::objects::JString<'a> {
     let buffer = LOG_BUFFER.read();
     let logs = buffer.join("\n");
     env.new_string(&logs).unwrap_or_else(|_| env.new_string("").unwrap()).into_raw()

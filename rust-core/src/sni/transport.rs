@@ -9,13 +9,14 @@
 //! updated at runtime via JNI without restarting the VPN.
 
 use tor_rtcompat::{
-    NetStreamProvider, NetStreamListener, SleepProvider, TlsProvider, TlsConnector,
+    NetStreamProvider, SleepProvider, TlsProvider,
 };
-use std::net::SocketAddr;
+use tor_rtcompat::tls::TlsConnector;
 use std::sync::Arc;
 use std::time::Duration;
 use std::future::Future;
 use std::io::Error as IoError;
+use std::pin::Pin;
 
 // ===========================================================================
 // SniRuntime
@@ -52,11 +53,17 @@ impl<R: tor_rtcompat::Runtime> NetStreamProvider for SniRuntime<R> {
     type Stream = <R as NetStreamProvider>::Stream;
     type Listener = <R as NetStreamProvider>::Listener;
 
-    async fn connect(&self, addr: &SocketAddr) -> std::io::Result<Self::Stream> {
+    async fn connect<ADDR: std::net::ToSocketAddrs + Send>(
+        &self,
+        addr: &ADDR,
+    ) -> std::io::Result<Self::Stream> {
         self.inner.connect(addr).await
     }
 
-    async fn listen(&self, addr: &SocketAddr) -> std::io::Result<Self::Listener> {
+    async fn listen<ADDR: std::net::ToSocketAddrs + Send>(
+        &self,
+        addr: &ADDR,
+    ) -> std::io::Result<Self::Listener> {
         self.inner.listen(addr).await
     }
 }
@@ -74,8 +81,8 @@ impl<R: tor_rtcompat::Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for
         }
     }
 
-    fn tls_acceptor(&self) -> Self::Acceptor {
-        self.inner.tls_acceptor()
+    fn tls_acceptor(&self, _settings: tor_rtcompat::tls::TlsAcceptorSettings) -> Self::Acceptor {
+        self.inner.tls_acceptor(tor_rtcompat::tls::TlsAcceptorSettings::default())
     }
 
     fn supports_keying_material_export(&self) -> bool {
