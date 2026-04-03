@@ -1,12 +1,12 @@
-use async_trait::async_trait;
+//! SniRuntime — a thin wrapper around an Arti runtime.
+//!
+//! Currently a passthrough: SNI rewriting is done in the main loop
+//! by the `SniInterceptor` which inspects TCP payloads directly.
+//! This wrapper exists only to satisfy Arti's `Runtime` trait bounds.
+
+use tor_rtcompat::{NetStreamProvider, NetStreamListener, SleepProvider, TlsProvider};
 use std::net::SocketAddr;
-use std::pin::Pin;
-use futures_io::{AsyncRead, AsyncWrite};
-use tor_rtcompat::{NetStreamProvider, NetStreamListener, StreamOps, SleepProvider, TlsProvider};
-use std::task::{Context, Poll};
-use futures::stream::Stream;
 use std::time::Duration;
-use std::marker::PhantomData;
 
 #[derive(Clone)]
 pub struct SniRuntime<R: tor_rtcompat::Runtime> {
@@ -18,6 +18,10 @@ impl<R: tor_rtcompat::Runtime> SniRuntime<R> {
     pub fn new(inner: R, sni_host: String) -> Self {
         Self { inner, sni_host }
     }
+
+    pub fn inner(&self) -> &R {
+        &self.inner
+    }
 }
 
 impl<R: tor_rtcompat::Runtime> SleepProvider for SniRuntime<R> {
@@ -27,28 +31,24 @@ impl<R: tor_rtcompat::Runtime> SleepProvider for SniRuntime<R> {
     }
 }
 
-#[async_trait]
 impl<R: tor_rtcompat::Runtime> NetStreamProvider for SniRuntime<R> {
-    type Stream = WrappedStream<<R as NetStreamProvider>::Stream>;
-    type Listener = WrappedListener<<R as NetStreamProvider>::Listener, <R as NetStreamProvider>::Stream>;
+    type Stream = <R as NetStreamProvider>::Stream;
+    type Listener = <R as NetStreamProvider>::Listener;
 
     async fn connect(&self, addr: &SocketAddr) -> std::io::Result<Self::Stream> {
-        let stream = self.inner.connect(addr).await?;
-        log::debug!("🎭 Spoofing SNI to {} for connection to {}", self.sni_host, addr);
-        Ok(WrappedStream { inner: stream })
+        self.inner.connect(addr).await
     }
 
     async fn listen(&self, addr: &SocketAddr) -> std::io::Result<Self::Listener> {
-        let listener = self.inner.listen(addr).await?;
-        Ok(WrappedListener { inner: listener, _phantom: PhantomData })
+        self.inner.listen(addr).await
     }
 }
 
-impl<R: tor_rtcompat::Runtime> TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>> for SniRuntime<R> {
-    type Connector = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::Connector;
-    type Acceptor = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::Acceptor;
-    type TlsStream = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::TlsStream;
-    type TlsServerStream = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::TlsServerStream;
+impl<R: tor_rtcompat::Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for SniRuntime<R> {
+    type Connector = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::Connector;
+    type Acceptor = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::Acceptor;
+    type TlsStream = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::TlsStream;
+    type TlsServerStream = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::TlsServerStream;
 
     fn tls_connector(&self) -> Self::Connector {
         self.inner.tls_connector()
@@ -60,78 +60,5 @@ impl<R: tor_rtcompat::Runtime> TlsProvider<WrappedStream<<R as NetStreamProvider
 
     fn supports_keying_material_export(&self) -> bool {
         self.inner.supports_keying_material_export()
-    }
-}
-
-pub struct WrappedStream<S> {
-    inner: S,
-}
-
-impl<S: AsyncRead + Unpin> AsyncRead for WrappedStream<S> {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
-    }
-}
-
-impl<S: AsyncWrite + Unpin> AsyncWrite for WrappedStream<S> {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
-    }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_flush(cx)
-    }
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.inner).poll_close(cx)
-    }
-}
-
-impl<S: StreamOps + Send + Unpin + 'static> StreamOps for WrappedStream<S> {
-    fn set_tcp_notsent_lowat(&self, notsent_lowat: u32) -> std::io::Result<()> {
-        self.inner.set_tcp_notsent_lowat(notsent_lowat)
-    }
-    fn new_handle(&self) -> Box<dyn StreamOps + Send + Unpin> {
-        self.inner.new_handle()
-    }
-}
-
-pub struct WrappedListener<L, S> {
-    inner: L,
-    _phantom: std::marker::PhantomData<S>,
-}
-
-#[async_trait]
-impl<L: NetStreamListener<SocketAddr, Stream = S>, S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + Unpin + 'static> 
-    NetStreamListener<SocketAddr> for WrappedListener<L, S> 
-{
-    type Stream = WrappedStream<S>;
-    type Incoming = WrappedIncoming<L::Incoming, S>;
-
-    fn incoming(self) -> Self::Incoming {
-        WrappedIncoming {
-            inner: self.inner.incoming(),
-            _phantom: std::marker::PhantomData,
-        }
-    }
-
-    fn local_addr(&self) -> std::io::Result<SocketAddr> {
-        self.inner.local_addr()
-    }
-}
-
-pub struct WrappedIncoming<I, S> {
-    inner: I,
-    _phantom: std::marker::PhantomData<S>,
-}
-
-impl<I: Stream<Item = std::io::Result<(S, SocketAddr)>> + Unpin, S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + Unpin + 'static> Stream for WrappedIncoming<I, S> {
-    type Item = std::io::Result<(WrappedStream<S>, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match Pin::new(&mut self.get_mut().inner).poll_next(cx) {
-            Poll::Ready(Some(Ok((stream, addr)))) => Poll::Ready(Some(Ok((WrappedStream { inner: stream }, addr)))),
-            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
-        }
     }
 }
