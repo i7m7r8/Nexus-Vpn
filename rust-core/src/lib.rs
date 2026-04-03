@@ -161,6 +161,7 @@ fn _init_vpn_native(
 
     RUNNING.store(true, Ordering::SeqCst);
 
+    // Spawn VPN main loop in background — don't block JNI return
     rt.spawn(async move {
         if let Err(e) = vpn_main_loop(tun_fd, shared_sni, bridge_json).await {
             log::error!("🚨 VPN Main Loop Error: {e}");
@@ -169,6 +170,9 @@ fn _init_vpn_native(
     });
 
     *RUNTIME.write() = Some(rt);
+
+    // Return true immediately — Tor bootstrap runs in background
+    log::info!("✅ Native init complete — Tor bootstrapping in background");
     true as jboolean
 }
 
