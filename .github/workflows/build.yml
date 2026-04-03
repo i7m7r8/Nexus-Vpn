@@ -48,19 +48,31 @@ jobs:
       # Download Tor Expert Bundles from official Tor Project
       - name: Download Tor Expert Bundle (arm64-v8a)
         run: |
-          mkdir -p android/app/src/main/assets/tor/arm64-v8a
+          mkdir -p /tmp/tor-arm64
           curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-aarch64-${{ env.TOR_VERSION }}.tar.gz" \
             -o /tmp/tor-arm64.tar.gz
-          tar xzf /tmp/tor-arm64.tar.gz -C android/app/src/main/assets/tor/arm64-v8a --strip-components=1
-          chmod +x android/app/src/main/assets/tor/arm64-v8a/tor
+          tar xzf /tmp/tor-arm64.tar.gz -C /tmp/tor-arm64
+          mkdir -p android/app/src/main/assets/tor
+          # Copy entire extracted tree preserving structure
+          cp -r /tmp/tor-arm64/* android/app/src/main/assets/tor/arm64-v8a/
+          # Make all executables executable
+          find android/app/src/main/assets/tor/arm64-v8a -type f \( -name "tor" -o -name "snowflake*" -o -name "lyrebird*" -o -name "obfs*" \) -exec chmod +x {} \;
+          echo "=== arm64-v8a contents ==="
+          find android/app/src/main/assets/tor/arm64-v8a -type f | head -30
 
       - name: Download Tor Expert Bundle (x86_64)
         run: |
-          mkdir -p android/app/src/main/assets/tor/x86_64
+          mkdir -p /tmp/tor-x86_64
           curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-x86_64-${{ env.TOR_VERSION }}.tar.gz" \
             -o /tmp/tor-x86_64.tar.gz
-          tar xzf /tmp/tor-x86_64.tar.gz -C android/app/src/main/assets/tor/x86_64 --strip-components=1
-          chmod +x android/app/src/main/assets/tor/x86_64/tor
+          tar xzf /tmp/tor-x86_64.tar.gz -C /tmp/tor-x86_64
+          mkdir -p android/app/src/main/assets/tor
+          # Copy entire extracted tree preserving structure
+          cp -r /tmp/tor-x86_64/* android/app/src/main/assets/tor/x86_64/
+          # Make all executables executable
+          find android/app/src/main/assets/tor/x86_64 -type f \( -name "tor" -o -name "snowflake*" -o -name "lyrebird*" -o -name "obfs*" \) -exec chmod +x {} \;
+          echo "=== x86_64 contents ==="
+          find android/app/src/main/assets/tor/x86_64 -type f | head -30
 
       # Generate Gradle wrapper (using 8.10)
       - name: Generate Gradle wrapper
