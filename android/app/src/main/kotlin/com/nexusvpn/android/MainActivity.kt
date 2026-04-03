@@ -7,9 +7,11 @@ import android.content.IntentFilter
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -124,6 +126,20 @@ fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
     var elapsed by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
+    // VPN permission launcher
+    val vpnLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            // Permission granted — start VPN
+            prefs.sniHostname = sniHost
+            ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "CONNECT" })
+            Toast.makeText(ctx, "✅ VPN permission granted — connecting...", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(ctx, "❌ VPN permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // BroadcastReceiver for real-time status from NexusVpnService
     LaunchedEffect(Unit) {
         val filter = IntentFilter(NexusVpnService.ACTION_STATUS)
@@ -195,14 +211,16 @@ fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
                     val vp = VpnService.prepare(ctx)
                     if (vp != null) {
                         // User hasn't granted VPN permission yet — show system dialog
-                        ctx.startActivity(vp)
-                        return@Button
+                        vpnLauncher.launch(vp)
+                    } else {
+                        // Permission already granted — start VPN
+                        prefs.sniHostname = sniHost
+                        ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "CONNECT" })
+                        Toast.makeText(ctx, "🔒 Connecting to Tor...", Toast.LENGTH_SHORT).show()
                     }
-                    // Permission already granted — start VPN
-                    prefs.sniHostname = sniHost
-                    ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "CONNECT" })
                 } else {
                     ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "DISCONNECT" })
+                    Toast.makeText(ctx, "Disconnecting...", Toast.LENGTH_SHORT).show()
                 }
             },
             Modifier.fillMaxWidth().height(60.dp),
