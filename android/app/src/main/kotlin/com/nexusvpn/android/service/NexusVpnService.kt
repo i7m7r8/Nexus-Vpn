@@ -68,7 +68,7 @@ class NexusVpnService : VpnService() {
             "DISCONNECT" -> disconnect()
             "UPDATE_SNI" -> intent.getStringExtra("sni_host")?.let {
                 NexusVpnApplication.prefs.sniHostname = it
-                try { companion.updateSniHostname(it) } catch (_: Exception) {}
+                try { updateSniHostname(it) } catch (_: Exception) {}
             }
         }
         return START_STICKY

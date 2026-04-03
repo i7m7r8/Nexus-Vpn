@@ -118,7 +118,7 @@ fun NexusVpnApp() {
 @Composable
 fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
     val ctx = LocalContext.current
-    val prefs = (ctx.applicationContext as NexusVpnApplication).prefs
+    val prefs = NexusVpnApplication.prefs
     var sniHost by remember { mutableStateOf(prefs.sniHostname ?: "cdn.cloudflare.net") }
     var vpnStatus by remember { mutableStateOf(VpnStatus()) }
     var elapsed by remember { mutableIntStateOf(0) }
@@ -288,7 +288,7 @@ fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
 
 @Composable
 fun SettingsScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
-    val prefs = (LocalContext.current.applicationContext as NexusVpnApplication).prefs
+    val prefs = NexusVpnApplication.prefs
     var bridgeType by remember { mutableStateOf(prefs.bridgeType) }
     var customBridge by remember { mutableStateOf(prefs.customBridgeLine ?: "") }
     var useBridges by remember { mutableStateOf(prefs.useBridges) }
