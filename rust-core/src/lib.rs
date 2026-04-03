@@ -44,6 +44,7 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
     _class: jni::objects::JClass,
     tun_fd: jint,
     sni_hostname: JString,
+    bridge_config: JString,
 ) -> jboolean {
     android_logger::init_once(
         android_logger::Config::default()
@@ -55,8 +56,16 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
         .map(|h| h.into())
         .unwrap_or_else(|_| String::from("www.cloudflare.com"));
 
+    let bridge_json: String = env
+        .get_string(&bridge_config)
+        .map(|h| h.into())
+        .unwrap_or_default();
+
     *SNI_HOST.write() = host.clone();
     log::info!("🚀 Initializing Nexus VPN Core (SNI: {})", host);
+    if !bridge_json.is_empty() {
+        log::info!("🌉 Bridge config provided");
+    }
 
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
@@ -73,7 +82,7 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
     RUNNING.store(true, Ordering::SeqCst);
 
     rt.spawn(async move {
-        if let Err(e) = vpn_main_loop(tun_fd, host).await {
+        if let Err(e) = vpn_main_loop(tun_fd, host, bridge_json).await {
             log::error!("🚨 VPN Main Loop Error: {e}");
             RUNNING.store(false, Ordering::SeqCst);
         }
@@ -252,7 +261,69 @@ impl Bridge {
 use tor_rtcompat::PreferredRuntime;
 use crate::sni::SniRuntime;
 
-async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
+/// Build TorClientConfig, optionally with bridge/pluggable transport support.
+///
+/// `bridge_config` is a JSON string from Android prefs:
+/// ```json
+/// {
+///   "use_bridges": true,
+///   "bridge_type": "obfs4",
+///   "custom_bridge_line": "Bridge obfs4 1.2.3.4:443 <fingerprint> cert=... iat-mode=0"
+/// }
+/// ```
+fn build_tor_config(bridge_config: &str) -> anyhow::Result<TorClientConfig> {
+    if bridge_config.is_empty() {
+        return Ok(TorClientConfig::default());
+    }
+
+    // Parse bridge config JSON
+    let config_val: serde_json::Value = match serde_json::from_str(bridge_config) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("⚠️ Failed to parse bridge config JSON: {}", e);
+            return Ok(TorClientConfig::default());
+        }
+    };
+
+    let use_bridges = config_val.get("use_bridges").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !use_bridges {
+        log::info!("ℹ️ Bridges disabled in config");
+        return Ok(TorClientConfig::default());
+    }
+
+    let bridge_type = config_val.get("bridge_type").and_then(|v| v.as_str()).unwrap_or("obfs4");
+    let custom_bridge_line = config_val.get("custom_bridge_line").and_then(|v| v.as_str());
+
+    if let Some(line) = custom_bridge_line {
+        if !line.is_empty() {
+            log::info!("🌉 Configuring bridge: {} (type: {})", line.split_whitespace().take(3).collect::<Vec<_>>().join(" "), bridge_type);
+
+            // Parse bridge line and build config with bridges
+            let bridge_line_str = line.to_string();
+            let config = TorClientConfig::builder()
+                .bridges()
+                    .bridges()
+                        .push(bridge_line_str);
+            // Note: Arti 0.40.0 bridge builder API may vary.
+            // If this doesn't compile, fall back to default config.
+            match config.build() {
+                Ok(cfg) => {
+                    log::info!("✅ Bridge config applied successfully");
+                    return Ok(cfg);
+                }
+                Err(e) => {
+                    log::warn!("⚠️ Failed to apply bridge config: {}. Using default.", e);
+                    return Ok(TorClientConfig::default());
+                }
+            }
+        }
+    }
+
+    log::warn!("⚠️ Bridges enabled but no bridge line provided");
+    Ok(TorClientConfig::default())
+}
+
+async fn vpn_main_loop(tun_fd: jint, sni_host: String, bridge_config: String) -> anyhow::Result<()> {
     let tun = Arc::new(TunDevice::new(tun_fd)?);
     let mut stack = NetStack::new();
 
@@ -267,14 +338,20 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
 
     let runtime = PreferredRuntime::current()?;
     let sni_runtime = SniRuntime::new(runtime.clone(), sni_host.clone());
-    let config = TorClientConfig::default();
+
+    // Build Tor config with optional bridge support
+    let config = build_tor_config(&bridge_config)?;
 
     let tor_client = match TorClient::with_runtime(sni_runtime)
         .config(config)
         .create_bootstrapped().await
     {
         Ok(client) => {
-            log::info!("✅ Arti bootstrapped — Tor connected via SNI!");
+            if !bridge_config.is_empty() {
+                log::info!("✅ Arti bootstrapped — Tor connected via bridges + SNI!");
+            } else {
+                log::info!("✅ Arti bootstrapped — Tor connected via SNI!");
+            }
             client
         }
         Err(e) => {

@@ -24,7 +24,7 @@ class NexusVpnService : VpnService() {
 
         init { System.loadLibrary("nexus_vpn") }
 
-        @JvmStatic external fun initVpnNative(tunFd: Int, sniHostname: String): Boolean
+        @JvmStatic external fun initVpnNative(tunFd: Int, sniHostname: String, bridgeConfig: String): Boolean
         @JvmStatic external fun stopVpnNative()
         @JvmStatic external fun setSniHostnameNative(hostname: String): Boolean
 
@@ -54,7 +54,17 @@ class NexusVpnService : VpnService() {
 
     private fun connect() {
         try {
-            val sni = NexusVpnApplication.prefs.sniHostname ?: "cdn.cloudflare.net"
+            val prefs = NexusVpnApplication.prefs
+            val sni = prefs.sniHostname ?: "cdn.cloudflare.net"
+
+            // Build bridge config JSON
+            val bridgeConfig = if (prefs.useBridges) {
+                val bridgeLine = prefs.customBridgeLine ?: ""
+                """{"use_bridges":true,"bridge_type":"${prefs.bridgeType}","custom_bridge_line":"$bridgeLine"}"""
+            } else {
+                "{}"
+            }
+
             val builder = Builder()
                 .addAddress(TUN_ADDR, TUN_PREFIX)
                 .addDnsServer("1.1.1.1")
@@ -62,18 +72,30 @@ class NexusVpnService : VpnService() {
                 .setSession("Nexus VPN")
                 .setMtu(TUN_MTU)
 
+            // Kill switch: block all traffic when VPN tunnel is not ready
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && prefs.killSwitch) {
+                builder.setBlocking(true)
+                Log.i(TAG, "🔒 Kill switch enabled (setBlocking)")
+            }
+
             tunFd = builder.establish()
                 ?: return run { Log.e(TAG, "establish() returned null"); disconnect() }
 
-            if (!initVpnNative(tunFd!!.fd, sni)) {
+            if (!initVpnNative(tunFd!!.fd, sni, bridgeConfig)) {
                 Log.e(TAG, "initVpnNative returned false")
                 disconnect()
                 return
             }
 
-            startForeground(NOTIF_ID, notif("Connected via Tor"))
+            val statusMsg = when {
+                prefs.useBridges && prefs.killSwitch -> "Bridge + Tor + Kill Switch"
+                prefs.useBridges -> "Connected via Bridge + Tor"
+                prefs.killSwitch -> "Connected via Tor + Kill Switch"
+                else -> "Connected via Tor"
+            }
+            startForeground(NOTIF_ID, notif(statusMsg))
             NexusVpnApplication.prefs.isVpnConnected = true
-            Log.i(TAG, "VPN started (SNI: $sni)")
+            Log.i(TAG, "VPN started (SNI: $sni, Bridges: ${prefs.useBridges}, KillSwitch: ${prefs.killSwitch})")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN", e)
             disconnect()

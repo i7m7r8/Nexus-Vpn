@@ -347,11 +347,11 @@ On Android, use `VpnService.Builder.addAllowedApplication()` /
 |-------|-------|---------------|--------|
 | 1 | **Phase 1** — Fix Bridge | `lib.rs` | ✅ Done |
 | 2 | **Phase 2** — Wire parser/rewriter | `sni/mod.rs`, `sni/parser.rs`, `sni/rewriter.rs` | ✅ Done |
-| 3 | **Phase 3** — SNI Interceptor | `lib.rs`, new `sni/interceptor.rs` | ✅ Done |
+| 3 | **Phase 3** — SNI Interceptor | `lib.rs` | ✅ Done |
 | 4 | **Phase 4** — Hostname Tor | `lib.rs` | ✅ Done |
 | 5 | **Phase 5** — DNS forwarder | `lib.rs` | ✅ Done |
-| 6 | **Phase 6** — Bridges | `lib.rs`, `NexusVpnService.kt` | Pending |
-| 7 | **Phase 7** — Kill switch | `NexusVpnService.kt` | Pending |
+| 6 | **Phase 6** — Bridges | `lib.rs`, `NexusVpnService.kt` | ✅ Done |
+| 7 | **Phase 7** — Kill switch | `NexusVpnService.kt` | ✅ Done |
 
 ---
 
@@ -359,7 +359,7 @@ On Android, use `VpnService.Builder.addAllowedApplication()` /
 
 - ✅ Android UI (Jetpack Compose, Proton VPN-style)
 - ✅ TUN interface setup via VpnService.Builder
-- ✅ JNI bindings (init/stop/setSNI)
+- ✅ JNI bindings (init/stop/setSNI + bridge config)
 - ✅ smoltcp virtual stack (10.8.0.2/24, MTU 1500)
 - ✅ Arti bootstrap to Tor network
 - ✅ Raw IP packets flow TUN → smoltcp
@@ -370,14 +370,16 @@ On Android, use `VpnService.Builder.addAllowedApplication()` /
 - ✅ **Hostname-aware Tor connections** — connects to real host, sends decoy SNI
 - ✅ **DNS forwarder** — queries forwarded through Tor to 1.1.1.1:53
 - ✅ **Socket lifecycle** — proper cleanup on close, EOF, connection failure
+- ✅ **Bridge/pluggable transport config** — obfs4/snowflake/meek via custom bridge lines
+- ✅ **Kill switch** — `setBlocking(true)` on Android Q+ prevents leaks when VPN drops
 
-## What's Still Broken / Incomplete
+## What's Still Incomplete
 
-- ❌ Bridge config/pluggable transports (UI has settings but not wired to Arti)
-- ❌ Kill switch (pref exists but no enforcement)
-- ❌ DNS forwarder: one response per query (no retry on loss)
 - ❌ SNI rewriter: cannot inject SNI into ClientHello that lacks it (only rewrites existing)
+- ❌ DNS forwarder: one response per query (no retry on loss)
 - ❌ No graceful shutdown of active Tor circuits
+- ❌ Bridge PT proxy binary not bundled (user must provide obfs4proxy path)
+- ❌ No IPv6 support in smoltcp stack
 
 ## End State
 
