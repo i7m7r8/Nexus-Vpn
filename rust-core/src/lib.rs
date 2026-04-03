@@ -536,9 +536,9 @@ async fn vpn_main_loop(
             log::debug!("🌐 DNS query #{} from {} ({} bytes)", query_id, src_endpoint, query.len());
 
             // Forward DNS query through Tor to 1.1.1.1:53
-            let _tor_clone = tor_client.clone();
-            let _dns_setup_tx = dns_setup_tx.clone();
-            let _query_clone = query.clone();
+            let tor_clone = tor_client.clone();
+            let dns_setup_tx_clone = dns_setup_tx.clone();
+            let query_clone = query.clone();
 
             tokio::spawn(async move {
                 let (to_app_tx, to_app_rx) = mpsc::channel::<Vec<u8>>(1);
@@ -546,10 +546,10 @@ async fn vpn_main_loop(
                 // Retry DNS query up to 3 times on failure (network loss resilience)
                 let mut last_err_msg: Option<String> = None;
                 for attempt in 1..=3 {
-                    match tor_client.connect(("1.1.1.1", 53)).await {
+                    match tor_clone.connect(("1.1.1.1", 53)).await {
                         Ok(mut dns_stream) => {
                             // Send query to DNS server through Tor
-                            if let Err(e) = dns_stream.write_all(&query).await {
+                            if let Err(e) = dns_stream.write_all(&query_clone).await {
                                 log::warn!("⚠️ DNS forward attempt {}: failed to send query #{}: {}", attempt, query_id, e);
                                 last_err_msg = Some(e.to_string());
                                 continue;
@@ -598,7 +598,7 @@ async fn vpn_main_loop(
                     log::error!("❌ DNS forward: query #{} failed after 3 attempts: {}", query_id, e);
                 }
 
-                let _ = dns_setup_tx.send((query_id, src_endpoint, to_app_rx)).await;
+                let _ = dns_setup_tx_clone.send((query_id, src_endpoint, to_app_rx)).await;
             });
         }
         drop(dns_socket);
