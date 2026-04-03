@@ -343,19 +343,19 @@ On Android, use `VpnService.Builder.addAllowedApplication()` /
 
 ## Implementation Order (for CI efficiency)
 
-| Order | Phase | Files Changed | Risk |
-|-------|-------|---------------|------|
-| 1 | **Phase 1** — Fix Bridge | `lib.rs` | High — core data path |
-| 2 | **Phase 2** — Wire parser/rewriter | `sni/mod.rs`, `sni/parser.rs`, `sni/rewriter.rs` | Low — just wiring |
-| 3 | **Phase 3** — SNI Interceptor | `lib.rs`, new `sni/interceptor.rs` | High — core feature |
-| 4 | **Phase 4** — Hostname Tor | `lib.rs` | Medium |
-| 5 | **Phase 5** — DNS (deferred) | `lib.rs` | Medium |
-| 6 | **Phase 6** — Bridges | `lib.rs`, `NexusVpnService.kt` | Low |
-| 7 | **Phase 7** — Kill switch | `NexusVpnService.kt` | Low |
+| Order | Phase | Files Changed | Status |
+|-------|-------|---------------|--------|
+| 1 | **Phase 1** — Fix Bridge | `lib.rs` | ✅ Done |
+| 2 | **Phase 2** — Wire parser/rewriter | `sni/mod.rs`, `sni/parser.rs`, `sni/rewriter.rs` | ✅ Done |
+| 3 | **Phase 3** — SNI Interceptor | `lib.rs`, new `sni/interceptor.rs` | ✅ Done |
+| 4 | **Phase 4** — Hostname Tor | `lib.rs` | ✅ Done |
+| 5 | **Phase 5** — DNS forwarder | `lib.rs` | ✅ Done |
+| 6 | **Phase 6** — Bridges | `lib.rs`, `NexusVpnService.kt` | Pending |
+| 7 | **Phase 7** — Kill switch | `NexusVpnService.kt` | Pending |
 
 ---
 
-## What Works Today (After Build Fix)
+## What Works Today
 
 - ✅ Android UI (Jetpack Compose, Proton VPN-style)
 - ✅ TUN interface setup via VpnService.Builder
@@ -363,15 +363,21 @@ On Android, use `VpnService.Builder.addAllowedApplication()` /
 - ✅ smoltcp virtual stack (10.8.0.2/24, MTU 1500)
 - ✅ Arti bootstrap to Tor network
 - ✅ Raw IP packets flow TUN → smoltcp
+- ✅ **Bidirectional smoltcp ↔ Tor bridge** (channel-based, deduplicated)
+- ✅ **SNI parser** with overflow-safe bounds checking
+- ✅ **SNI rewriter** — replaces SNI in TLS ClientHello with decoy
+- ✅ **SNI Interceptor** — inspects first TCP payload, extracts real hostname
+- ✅ **Hostname-aware Tor connections** — connects to real host, sends decoy SNI
+- ✅ **DNS forwarder** — queries forwarded through Tor to 1.1.1.1:53
+- ✅ **Socket lifecycle** — proper cleanup on close, EOF, connection failure
 
-## What's Broken (After Build Fix)
+## What's Still Broken / Incomplete
 
-- ❌ Bridge discards all data (one-directional, never writes)
-- ❌ Infinite duplicate Tor connections (no dedup)
-- ❌ SNI parser/rewriter are dead code (not in module tree)
-- ❌ SniRuntime is a passthrough (logs "spoofing" but does nothing)
-- ❌ DNS queries ignored
-- ❌ Tor connections use IP instead of hostname
+- ❌ Bridge config/pluggable transports (UI has settings but not wired to Arti)
+- ❌ Kill switch (pref exists but no enforcement)
+- ❌ DNS forwarder: one response per query (no retry on loss)
+- ❌ SNI rewriter: cannot inject SNI into ClientHello that lacks it (only rewrites existing)
+- ❌ No graceful shutdown of active Tor circuits
 
 ## End State
 

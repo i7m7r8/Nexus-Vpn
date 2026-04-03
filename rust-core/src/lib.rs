@@ -288,6 +288,10 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 16384];
     let sni_interceptor = SniInterceptor::new(sni_host.clone());
 
+    // DNS forwarder state: maps query_id → (source_endpoint, response_receiver)
+    let mut dns_pending: HashMap<u16, (smoltcp::wire::IpEndpoint, mpsc::Receiver<Vec<u8>>)> = HashMap::new();
+    let (dns_setup_tx, dns_setup_rx) = mpsc::channel::<(u16, smoltcp::wire::IpEndpoint, mpsc::Receiver<Vec<u8>>)>(16);
+
     // === Socket state tracking ===
     // inspecting: established TCP socket, waiting for first payload to do SNI interception
     let mut inspecting: HashSet<smoltcp::iface::SocketHandle> = HashSet::new();
@@ -319,13 +323,93 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
             }
         }
 
-        // === 1. DNS queries (stub) ===
+        // === 1. DNS forwarder — receive queries, forward through Tor ===
         let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
         if let Ok((data, endpoint)) = dns_socket.recv() {
-            let _query_data = data.to_vec();
-            log::debug!("🌐 DNS query from {}", endpoint);
+            let query = data.to_vec();
+            let query_id = if query.len() >= 2 {
+                ((query[0] as u16) << 8) | (query[1] as u16)
+            } else {
+                0
+            };
+
+            log::debug!("🌐 DNS query #{} from {} ({} bytes)", query_id, endpoint, query.len());
+
+            // Forward DNS query through Tor to 1.1.1.1:53
+            let tor_clone = tor_client.clone();
+            let dns_setup_tx = dns_setup_tx.clone();
+            let query_clone = query.clone();
+
+            tokio::spawn(async move {
+                let (to_app_tx, to_app_rx) = mpsc::channel::<Vec<u8>>(1);
+
+                match tor_clone.connect(("1.1.1.1", 53)).await {
+                    Ok(mut dns_stream) => {
+                        // Send query to DNS server through Tor
+                        if let Err(e) = dns_stream.write_all(&query_clone).await {
+                            log::error!("❌ DNS forward: failed to send query #{}: {}", query_id, e);
+                            return;
+                        }
+
+                        // Read response
+                        let mut resp_buf = vec![0u8; 4096];
+                        match dns_stream.read(&mut resp_buf).await {
+                            Ok(n) if n > 0 => {
+                                resp_buf.truncate(n);
+                                log::debug!("🌐 DNS response #{} received ({} bytes)", query_id, n);
+                                let _ = to_app_tx.send(resp_buf).await;
+                            }
+                            Ok(0) => {
+                                log::warn!("⚠️ DNS forward: empty response for query #{}", query_id);
+                            }
+                            Err(e) => {
+                                log::error!("❌ DNS forward: failed to read response #{}: {}", query_id, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("❌ DNS forward: failed to connect to 1.1.1.1:53 for query #{}: {}", query_id, e);
+                    }
+                }
+
+                let _ = dns_setup_tx.send((query_id, endpoint, to_app_rx)).await;
+            });
         }
         drop(dns_socket);
+
+        // === 1b. Receive DNS responses and send them back to apps ===
+        while let Ok((query_id, endpoint, mut rx)) = dns_setup_rx.try_recv() {
+            if let Ok(response) = rx.try_recv() {
+                let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
+                if let Err(e) = dns_socket.send_to(&response, endpoint) {
+                    log::error!("❌ DNS: failed to send response #{} to {}: {}", query_id, endpoint, e);
+                } else {
+                    log::debug!("✍️ DNS response #{} sent to {}", query_id, endpoint);
+                }
+            } else {
+                // Response not ready yet — store for next iteration
+                dns_pending.insert(query_id, (endpoint, rx));
+            }
+        }
+
+        // Check pending DNS responses
+        let mut ready_dns = Vec::new();
+        dns_pending.retain(|query_id, (endpoint, rx)| {
+            if let Ok(response) = rx.try_recv() {
+                ready_dns.push((*query_id, *endpoint, response));
+                false
+            } else {
+                true
+            }
+        });
+        for (query_id, endpoint, response) in ready_dns {
+            let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
+            if let Err(e) = dns_socket.send_to(&response, endpoint) {
+                log::error!("❌ DNS: failed to send delayed response #{} to {}: {}", query_id, endpoint, e);
+            } else {
+                log::debug!("✍️ DNS response #{} sent to {} (delayed)", query_id, endpoint);
+            }
+        }
 
         // === 2a. Detect newly established TCP sockets → move to inspecting ===
         let mut new_established = Vec::new();
