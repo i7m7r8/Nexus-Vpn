@@ -1,61 +1,47 @@
 package com.nexusvpn.android.service
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
-import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
+import android.os.ParcelFileDescriptor
+import android.net.VpnService
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import com.nexusvpn.android.MainActivity
-import com.nexusvpn.android.NexusVpnApplication
 import com.nexusvpn.android.R
+import com.nexusvpn.android.NexusVpnApplication
+import java.io.BufferedReader
+import java.io.File
+import java.io.InputStreamReader
+import java.io.FileWriter
 
 class NexusVpnService : VpnService() {
     companion object {
-        private const val TAG = "NexusVpnService"
-        private const val CHAN_ID = "nexus_vpn"
-        private const val NOTIF_ID = 1
-        private const val TUN_ADDR = "10.8.0.2"
-        private const val TUN_PREFIX = 32
-        private const val TUN_MTU = 1500
-
-        // Broadcast actions for UI status updates
+        const val TAG = "NexusVpnService"
         const val ACTION_STATUS = "com.nexusvpn.android.STATUS"
         const val EXTRA_STATUS = "status"
         const val EXTRA_SNI = "sni"
         const val EXTRA_BRIDGES = "bridges"
+        const val NOTIF_ID = 1
+        const val CHAN_ID = "nexus_vpn_channel"
 
-        init { System.loadLibrary("nexus_vpn") }
-
-        @JvmStatic external fun initVpnNative(tunFd: Int, sniHostname: String, bridgeConfig: String): Boolean
-        @JvmStatic external fun stopVpnNative()
-        @JvmStatic external fun setSniHostnameNative(hostname: String): Boolean
-        @JvmStatic external fun getLogsNative(): String
-        @JvmStatic external fun clearLogsNative()
-
-        /** Wrapper that calls the JNI native safely (avoids UnsatisfiedLinkError) */
-        fun updateSniHostname(hostname: String) {
-            try { setSniHostnameNative(hostname) } catch (_: UnsatisfiedLinkError) {}
+        init {
+            System.loadLibrary("nexus_vpn")
         }
+
+        external fun initVpnNative(tunFd: Int, sniHostname: String, bridgeConfig: String): Boolean
+        external fun stopVpnNative()
+        external fun setSniHostnameNative(hostname: String): Boolean
+        external fun getLogBufferNative(): String
     }
 
-    private var tunFd: android.os.ParcelFileDescriptor? = null
-    private var currentStatus: String = "Disconnected"
-
-    /** Broadcast status to all listeners (MainActivity) */
-    private fun broadcastStatus(status: String, sni: String = "", bridges: Boolean = false) {
-        currentStatus = status
-        val intent = Intent(ACTION_STATUS).apply {
-            putExtra(EXTRA_STATUS, status)
-            putExtra(EXTRA_SNI, sni)
-            putExtra(EXTRA_BRIDGES, bridges)
-            setPackage(packageName)
-        }
-        sendBroadcast(intent)
-    }
+    private var tunFd: ParcelFileDescriptor? = null
+    private var torProcess: Process? = null
+    private var isRunning = false
 
     override fun onCreate() {
         super.onCreate()
@@ -68,41 +54,70 @@ class NexusVpnService : VpnService() {
             "DISCONNECT" -> disconnect()
             "UPDATE_SNI" -> intent.getStringExtra("sni_host")?.let {
                 NexusVpnApplication.prefs.sniHostname = it
-                try { updateSniHostname(it) } catch (_: Exception) {}
+                try { setSniHostnameNative(it) } catch (_: Exception) {}
             }
         }
         return START_STICKY
     }
 
     private fun connect() {
+        if (isRunning) return
+        isRunning = true
+
         try {
             val prefs = NexusVpnApplication.prefs
-            val sni = prefs.sniHostname ?: "cdn.cloudflare.net"
+            val sni = prefs.sniHostname ?: "www.cloudflare.com"
 
-            // Build bridge config JSON
-            val bridgeConfig = if (prefs.useBridges) {
-                val bridgeLine = prefs.customBridgeLine ?: ""
-                """{"use_bridges":true,"bridge_type":"${prefs.bridgeType}","custom_bridge_line":"$bridgeLine"}"""
-            } else {
-                "{}"
+            // Step 1: Extract Tor binary from assets
+            val torDir = File(applicationContext.filesDir, "tor")
+            torDir.mkdirs()
+            val torBinary = extractTorBinary(torDir)
+            if (torBinary == null) {
+                Log.e(TAG, "Failed to extract Tor binary")
+                broadcastStatus("Error: Tor binary missing")
+                isRunning = false
+                return
             }
 
-            val builder = Builder()
-                .addAddress(TUN_ADDR, TUN_PREFIX)
-                .addDnsServer("1.1.1.1")
-                .addRoute("0.0.0.0", 0)
-                .setSession("Nexus VPN")
-                .setMtu(TUN_MTU)
+            // Step 2: Generate torrc with SNI config
+            val torrcFile = File(torDir, "torrc")
+            val torDataDir = File(torDir, "data")
+            torDataDir.mkdirs()
+            generateTorrc(torrcFile, torDataDir, sni, prefs)
 
-            // Kill switch: block all traffic when VPN tunnel is not ready
+            // Step 3: Start Tor as subprocess
+            startTorProcess(torBinary, torrcFile, torDataDir)
+
+            // Step 4: Wait for Tor to be ready (simple delay for bootstrap)
+            val statusMsg = when {
+                prefs.useBridges && prefs.killSwitch -> "Starting Bridge + Tor + Kill Switch"
+                prefs.useBridges -> "Starting Bridge + Tor"
+                prefs.killSwitch -> "Starting Tor + Kill Switch"
+                else -> "Starting Tor"
+            }
+            startForeground(NOTIF_ID, notif(statusMsg))
+            broadcastStatus(statusMsg, sni, prefs.useBridges)
+
+            // Step 5: Build VPN interface
+            val builder = Builder()
+                .setSession("Nexus VPN")
+                .addAddress("10.8.0.2", 24)
+                .addDnsServer("127.0.0.1")
+                .addRoute("0.0.0.0", 0)
+                .setMtu(1500)
+                .setBlocking(false)
+
+            // Kill switch
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && prefs.killSwitch) {
                 builder.setBlocking(true)
-                Log.i(TAG, "🔒 Kill switch enabled (setBlocking)")
+                Log.i(TAG, "🔒 Kill switch enabled")
             }
 
             tunFd = builder.establish()
                 ?: return run { Log.e(TAG, "establish() returned null"); disconnect() }
 
+            // Step 6: Start native VPN (routes TUN to local SOCKS)
+            val bridgeConfig = buildBridgeConfigJson(prefs)
             try {
                 val initResult = initVpnNative(tunFd!!.fd, sni, bridgeConfig)
                 if (!initResult) {
@@ -126,15 +141,15 @@ class NexusVpnService : VpnService() {
                 return
             }
 
-            val statusMsg = when {
+            val finalMsg = when {
                 prefs.useBridges && prefs.killSwitch -> "Bridge + Tor + Kill Switch"
                 prefs.useBridges -> "Connected via Bridge + Tor"
                 prefs.killSwitch -> "Connected via Tor + Kill Switch"
                 else -> "Connected via Tor"
             }
-            startForeground(NOTIF_ID, notif(statusMsg))
+            startForeground(NOTIF_ID, notif(finalMsg))
             NexusVpnApplication.prefs.isVpnConnected = true
-            broadcastStatus(statusMsg, sni, prefs.useBridges)
+            broadcastStatus(finalMsg, sni, prefs.useBridges)
             Log.i(TAG, "VPN started (SNI: $sni, Bridges: ${prefs.useBridges}, KillSwitch: ${prefs.killSwitch})")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN", e)
@@ -142,12 +157,152 @@ class NexusVpnService : VpnService() {
         }
     }
 
+    private fun extractTorBinary(torDir: File): File? {
+        val abi = Build.SUPPORTED_ABIS.firstOrNull { it.contains("arm64") || it.contains("aarch64") }
+            ?: Build.SUPPORTED_ABIS.firstOrNull { it.contains("x86_64") }
+            ?: return null
+
+        val archDir = if (abi.contains("arm64") || abi.contains("aarch64")) "arm64-v8a" else "x86_64"
+        val assetPath = "tor/$archDir"
+
+        // Copy tor binary from assets
+        val torBinary = File(torDir, "tor")
+        if (!torBinary.exists() || torBinary.length() == 0L) {
+            try {
+                assets.open("$assetPath/tor").use { input ->
+                    torBinary.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                torBinary.setExecutable(true)
+                Log.i(TAG, "✅ Extracted Tor binary: $archDir")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to extract Tor binary", e)
+                return null
+            }
+        }
+
+        // Copy geoip files
+        for (geoipFile in listOf("geoip", "geoip6")) {
+            val dest = File(torDir, geoipFile)
+            if (!dest.exists()) {
+                try {
+                    assets.open("$assetPath/$geoipFile").use { input ->
+                        dest.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        return torBinary
+    }
+
+    private fun generateTorrc(torrc: File, dataDir: File, sni: String, prefs: com.nexusvpn.android.data.Prefs) {
+        val lines = mutableListOf<String>()
+
+        // Basic config
+        lines.add("RunAsDaemon 0")
+        lines.add("AvoidDiskWrites 1")
+        lines.add("DataDirectory ${dataDir.absolutePath}")
+
+        // Local listeners
+        lines.add("SOCKSPort 127.0.0.1:9050")
+        lines.add("DNSPort 127.0.0.1:5400")
+        lines.add("TransPort 127.0.0.1:9040")
+        lines.add("HTTPTunnelPort 127.0.0.1:8118")
+
+        // SNI config (for domain fronting)
+        lines.add("SNI $sni")
+
+        // Bridge config
+        if (prefs.useBridges) {
+            lines.add("UseBridges 1")
+
+            when (prefs.bridgeType) {
+                "obfs4" -> {
+                    lines.add("ClientTransportPlugin obfs4 exec ${File(applicationContext.filesDir, "tor/lyrebird").absolutePath}")
+                    if (!prefs.customBridgeLine.isNullOrEmpty()) {
+                        lines.add("Bridge ${prefs.customBridgeLine}")
+                    }
+                }
+                "snowflake" -> {
+                    lines.add("ClientTransportPlugin snowflake exec ${File(applicationContext.filesDir, "tor/snowflake-client").absolutePath}")
+                    if (!prefs.customBridgeLine.isNullOrEmpty()) {
+                        lines.add("Bridge ${prefs.customBridgeLine}")
+                    }
+                }
+                "vanilla" -> {
+                    // No bridges, just use default Tor
+                    lines.add("UseBridges 0")
+                }
+            }
+        }
+
+        // GeoIP
+        val geoip = File(applicationContext.filesDir, "tor/geoip")
+        val geoip6 = File(applicationContext.filesDir, "tor/geoip6")
+        if (geoip.exists()) lines.add("GeoIPFile ${geoip.absolutePath}")
+        if (geoip6.exists()) lines.add("GeoIPv6File ${geoip6.absolutePath}")
+
+        // Logging
+        lines.add("Log notice stdout")
+
+        // Write torrc
+        FileWriter(torrc).use { it.write(lines.joinToString("\n")) }
+        Log.i(TAG, "📝 Generated torrc with SNI=$sni, Bridges=${prefs.useBridges}")
+    }
+
+    private fun startTorProcess(torBinary: File, torrc: File, dataDir: File) {
+        val processBuilder = ProcessBuilder(
+            torBinary.absolutePath,
+            "-f", torrc.absolutePath,
+            "--DataDirectory", dataDir.absolutePath
+        )
+        processBuilder.redirectErrorStream(true)
+
+        torProcess = processBuilder.start()
+
+        // Read Tor output in background
+        Thread {
+            val reader = BufferedReader(InputStreamReader(torProcess?.inputStream))
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                Log.i("Tor", line!!)
+                // Check for bootstrap completion
+                if (line!!.contains("Bootstrapped 100%")) {
+                    broadcastStatus("Connected via Tor", NexusVpnApplication.prefs.sniHostname ?: "", NexusVpnApplication.prefs.useBridges)
+                }
+            }
+        }.start()
+
+        Log.i(TAG, "✅ Tor process started (PID: ${torProcess?.pid()})")
+    }
+
+    private fun buildBridgeConfigJson(prefs: com.nexusvpn.android.data.Prefs): String {
+        return """{"socks_port":9050,"dns_port":5400,"use_bridges":${prefs.useBridges},"bridge_type":"${prefs.bridgeType}"}"""
+    }
+
     private fun disconnect() {
+        isRunning = false
         NexusVpnApplication.prefs.isVpnConnected = false
         broadcastStatus("Disconnected")
+
+        // Stop native first (before closing TUN fd)
         try { stopVpnNative() } catch (_: Exception) {}
+
+        // Close TUN fd
         try { tunFd?.close() } catch (_: Exception) {}
         tunFd = null
+
+        // Stop Tor process
+        try {
+            torProcess?.destroy()
+            torProcess?.waitFor()
+            torProcess = null
+        } catch (_: Exception) {}
+
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
         stopSelf()
         Log.i(TAG, "VPN disconnected")
@@ -160,22 +315,38 @@ class NexusVpnService : VpnService() {
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(chan)
     }
 
-    private fun notif(text: String) = NotificationCompat.Builder(this, CHAN_ID)
-        .setContentTitle("Nexus VPN")
-        .setContentText(text)
-        .setSmallIcon(R.drawable.ic_vpn)
-        .setOngoing(true)
-        .setContentIntent(
-            PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        )
-        .build()
+    private fun notif(status: String): Notification {
+        val intent = Intent(this, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        return Notification.Builder(this, CHAN_ID)
+            .setContentTitle("Nexus VPN")
+            .setContentText(status)
+            .setSmallIcon(R.drawable.ic_vpn)
+            .setContentIntent(pending)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun broadcastStatus(status: String, sni: String = "", bridges: Boolean = false) {
+        val intent = Intent(ACTION_STATUS).apply {
+            putExtra(EXTRA_STATUS, status)
+            putExtra(EXTRA_SNI, sni)
+            putExtra(EXTRA_BRIDGES, bridges)
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
-    override fun onDestroy() { disconnect(); super.onDestroy() }
 
-    /** Called when the system revokes VPN permission (e.g., user disables in settings) */
     override fun onRevoke() {
-        Log.w(TAG, "⚠️ VPN permission revoked by system")
         disconnect()
+    }
+
+    override fun onDestroy() {
+        disconnect()
+        super.onDestroy()
     }
 }

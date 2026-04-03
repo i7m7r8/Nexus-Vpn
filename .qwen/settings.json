@@ -7,7 +7,10 @@
       "Bash(git commit *)",
       "Bash(git push)",
       "Bash(git reset *)",
-      "Bash(rm *)"
+      "Bash(rm *)",
+      "Bash(ls *)",
+      "Bash(unzip *)",
+      "Bash(grep *)"
     ]
   },
   "$version": 3

@@ -8,6 +8,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: "stable"
+  TOR_VERSION: "15.0.8"
 
 jobs:
   build-release:
@@ -43,6 +44,23 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # Download Tor Expert Bundles from official Tor Project
+      - name: Download Tor Expert Bundle (arm64-v8a)
+        run: |
+          mkdir -p android/app/src/main/assets/tor/arm64-v8a
+          curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-aarch64-${{ env.TOR_VERSION }}.tar.gz" \
+            -o /tmp/tor-arm64.tar.gz
+          tar xzf /tmp/tor-arm64.tar.gz -C android/app/src/main/assets/tor/arm64-v8a --strip-components=1
+          chmod +x android/app/src/main/assets/tor/arm64-v8a/tor
+
+      - name: Download Tor Expert Bundle (x86_64)
+        run: |
+          mkdir -p android/app/src/main/assets/tor/x86_64
+          curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-x86_64-${{ env.TOR_VERSION }}.tar.gz" \
+            -o /tmp/tor-x86_64.tar.gz
+          tar xzf /tmp/tor-x86_64.tar.gz -C android/app/src/main/assets/tor/x86_64 --strip-components=1
+          chmod +x android/app/src/main/assets/tor/x86_64/tor
 
       # Generate Gradle wrapper (using 8.10)
       - name: Generate Gradle wrapper
