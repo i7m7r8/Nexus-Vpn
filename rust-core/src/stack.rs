@@ -3,6 +3,7 @@ use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 use smoltcp::wire::{IpAddress, IpCidr};
 use std::collections::VecDeque;
+use std::net::Ipv4Addr;
 
 pub struct VirtualDevice {
     pub rx_queue: VecDeque<Vec<u8>>,
@@ -82,7 +83,7 @@ impl NetStack {
             addrs.push(IpCidr::new(IpAddress::v4(10, 8, 0, 2), 24)).unwrap();
         });
         
-        interface.routes_mut().add_default_ipv4_route(IpAddress::v4(10, 8, 0, 1)).unwrap();
+        interface.routes_mut().add_default_ipv4_route(Ipv4Addr::new(10, 8, 0, 1)).unwrap();
 
         Self {
             interface,

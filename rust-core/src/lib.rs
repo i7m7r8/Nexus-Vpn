@@ -39,7 +39,7 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
     android_logger::init_once(
         android_logger::Config::default()
             .with_tag("NexusVpn")
-            .with_min_level(log::LevelFilter::Debug),
+            .with_max_level(log::LevelFilter::Debug),
     );
 
     let host: String = env
@@ -108,6 +108,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 
 use smoltcp::wire::IpAddress;
 use smoltcp::socket::udp::{Socket as UdpSocket, PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata};
+use smoltcp::socket::AnySocket;
 use arti_client::{TorClient, TorClientConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -161,7 +162,8 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
     let transport = SniTransport::new(runtime.clone(), sni_host.clone());
     let config = TorClientConfig::default();
     
-    let tor_client = match TorClient::with_runtime(runtime)
+    let tor_client = match TorClient::builder()
+        .runtime(runtime)
         .transport(transport)
         .create_bootstrapped(config).await 
     {
@@ -170,8 +172,8 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
             client
         }
         Err(e) => {
-            log::error!("❌ Arti bootstrap failed: {e}");
-            return Err(e.into());
+            log::error!("❌ Arti bootstrap failed: {}", e);
+            return Err(anyhow::anyhow!("Tor bootstrap failed: {}", e));
         }
     };
 
