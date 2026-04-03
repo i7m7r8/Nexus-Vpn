@@ -38,8 +38,7 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
 ) -> jboolean {
     android_logger::init_once(
         android_logger::Config::default()
-            .with_tag("NexusVpn")
-            .with_max_level(log::LevelFilter::Debug),
+            .with_tag("NexusVpn"),
     );
 
     let host: String = env
@@ -162,8 +161,7 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
     let transport = SniTransport::new(runtime.clone(), sni_host.clone());
     let config = TorClientConfig::default();
     
-    let tor_client = match TorClient::builder()
-        .runtime(runtime)
+    let tor_client = match TorClient::with_runtime(runtime)
         .transport(transport)
         .create_bootstrapped(config).await 
     {
@@ -206,7 +204,8 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
         // 2. Process TCP connections
         let mut sockets_to_bridge = Vec::new();
         for (handle, socket) in stack.socket_set.iter_mut() {
-            if let Some(tcp_socket) = smoltcp::socket::tcp::Socket::downcast_mut(socket) {
+            let any_socket: &mut dyn AnySocket = socket;
+            if let Some(tcp_socket) = smoltcp::socket::tcp::Socket::downcast_mut(any_socket) {
                 if tcp_socket.is_active() && tcp_socket.state() == smoltcp::socket::tcp::State::Established {
                     if let Some(endpoint) = tcp_socket.remote_endpoint() {
                         sockets_to_bridge.push((handle, endpoint));

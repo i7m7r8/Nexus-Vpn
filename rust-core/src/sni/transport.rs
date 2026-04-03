@@ -4,6 +4,7 @@ use std::pin::Pin;
 use futures_io::{AsyncRead, AsyncWrite};
 use tor_rtcompat::{NetStreamProvider, NetStreamListener, StreamOps};
 use std::task::{Context, Poll};
+use futures::stream::Stream;
 
 #[derive(Clone)]
 pub struct SniTransport<R: NetStreamProvider<SocketAddr>> {
@@ -39,11 +40,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for WrappedStream<S> {
     }
 }
 
-impl<S: StreamOps> StreamOps for WrappedStream<S> {
-    fn set_tcp_keepalive(&mut self, keepalive: &std::time::Duration) -> std::io::Result<()> {
-        self.inner.set_tcp_keepalive(keepalive)
-    }
-}
+impl<S: StreamOps> StreamOps for WrappedStream<S> {}
 
 pub struct WrappedListener<L, S> {
     inner: L,
@@ -55,14 +52,35 @@ impl<L: NetStreamListener<SocketAddr, Stream = S>, S: AsyncRead + AsyncWrite + S
     NetStreamListener<SocketAddr> for WrappedListener<L, S> 
 {
     type Stream = WrappedStream<S>;
+    type Incoming = WrappedIncoming<L::Incoming, S>;
 
-    async fn accept(&mut self) -> std::io::Result<(Self::Stream, SocketAddr)> {
-        let (stream, addr) = self.inner.accept().await?;
-        Ok((WrappedStream { inner: stream }, addr))
+    fn incoming(self) -> Self::Incoming {
+        WrappedIncoming {
+            inner: self.inner.incoming(),
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     fn local_addr(&self) -> std::io::Result<SocketAddr> {
         self.inner.local_addr()
+    }
+}
+
+pub struct WrappedIncoming<I, S> {
+    inner: I,
+    _phantom: std::marker::PhantomData<S>,
+}
+
+impl<I: Stream<Item = std::io::Result<(S, SocketAddr)>> + Unpin, S> Stream for WrappedIncoming<I, S> {
+    type Item = std::io::Result<(WrappedStream<S>, SocketAddr)>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match Pin::new(&mut self.inner).poll_next(cx) {
+            Poll::Ready(Some(Ok((stream, addr)))) => Poll::Ready(Some(Ok((WrappedStream { inner: stream }, addr)))),
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 
