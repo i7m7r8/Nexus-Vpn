@@ -160,12 +160,16 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_stopVpn
     _env: JNIEnv,
     _class: jni::objects::JClass,
 ) {
-    log::info!("🛑 Stopping Nexus VPN Core");
+    log::info!("🛑 Stopping Nexus VPN Core — initiating graceful shutdown");
     RUNNING.store(false, Ordering::SeqCst);
 
     let mut rt_guard = RUNTIME.write();
     if let Some(rt) = rt_guard.take() {
-        rt.shutdown_background();
+        // Graceful shutdown: allow active tasks to finish
+        // Give Tor circuits time to close cleanly (up to 5 seconds)
+        log::info!("⏳ Waiting for active Tor circuits to close...");
+        rt.shutdown_timeout(std::time::Duration::from_secs(5));
+        log::info!("✅ Runtime shutdown complete");
     }
 }
 
@@ -527,33 +531,59 @@ async fn vpn_main_loop(
             tokio::spawn(async move {
                 let (to_app_tx, to_app_rx) = mpsc::channel::<Vec<u8>>(1);
 
-                match tor_clone.connect(("1.1.1.1", 53)).await {
-                    Ok(mut dns_stream) => {
-                        // Send query to DNS server through Tor
-                        if let Err(e) = dns_stream.write_all(&query_clone).await {
-                            log::error!("❌ DNS forward: failed to send query #{}: {}", query_id, e);
-                            return;
-                        }
+                // Retry DNS query up to 3 times on failure (network loss resilience)
+                let mut last_err = None;
+                for attempt in 1..=3 {
+                    match tor_clone.connect(("1.1.1.1", 53)).await {
+                        Ok(mut dns_stream) => {
+                            // Send query to DNS server through Tor
+                            if let Err(e) = dns_stream.write_all(&query_clone).await {
+                                log::warn!("⚠️ DNS forward attempt {}: failed to send query #{}: {}", attempt, query_id, e);
+                                last_err = Some(e);
+                                continue;
+                            }
 
-                        // Read response
-                        let mut resp_buf = vec![0u8; 4096];
-                        match dns_stream.read(&mut resp_buf).await {
-                            Ok(n) if n > 0 => {
-                                resp_buf.truncate(n);
-                                log::debug!("🌐 DNS response #{} received ({} bytes)", query_id, n);
-                                let _ = to_app_tx.send(resp_buf).await;
-                            }
-                            Ok(0) => {
-                                log::warn!("⚠️ DNS forward: empty response for query #{}", query_id);
-                            }
-                            Err(e) => {
-                                log::error!("❌ DNS forward: failed to read response #{}: {}", query_id, e);
+                            // Read response with timeout
+                            let mut resp_buf = vec![0u8; 4096];
+                            match tokio::time::timeout(
+                                std::time::Duration::from_secs(10),
+                                dns_stream.read(&mut resp_buf)
+                            ).await {
+                                Ok(Ok(n)) if n > 0 => {
+                                    resp_buf.truncate(n);
+                                    log::debug!("🌐 DNS response #{} received ({} bytes, attempt {})", query_id, n, attempt);
+                                    let _ = to_app_tx.send(resp_buf).await;
+                                    last_err = None;
+                                    break;
+                                }
+                                Ok(Ok(0)) => {
+                                    log::warn!("⚠️ DNS forward: empty response for query #{} (attempt {})", query_id, attempt);
+                                    last_err = Some(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "empty response"));
+                                }
+                                Ok(Err(e)) => {
+                                    log::warn!("⚠️ DNS forward: failed to read response #{} (attempt {}): {}", query_id, attempt, e);
+                                    last_err = Some(e);
+                                }
+                                Err(_) => {
+                                    log::warn!("⚠️ DNS forward: timeout reading response #{} (attempt {})", query_id, attempt);
+                                    last_err = Some(std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout"));
+                                }
                             }
                         }
+                        Err(e) => {
+                            log::warn!("⚠️ DNS forward: failed to connect to 1.1.1.1:53 for query #{} (attempt {}): {}", query_id, attempt, e);
+                            last_err = Some(e);
+                        }
                     }
-                    Err(e) => {
-                        log::error!("❌ DNS forward: failed to connect to 1.1.1.1:53 for query #{}: {}", query_id, e);
+
+                    // Wait before retry (exponential backoff: 1s, 2s)
+                    if attempt < 3 {
+                        tokio::time::sleep(std::time::Duration::from_secs(1 << attempt)).await;
                     }
+                }
+
+                if let Some(e) = last_err {
+                    log::error!("❌ DNS forward: query #{} failed after 3 attempts: {}", query_id, e);
                 }
 
                 let _ = dns_setup_tx.send((query_id, endpoint, to_app_rx)).await;
