@@ -12,9 +12,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Tor / Arti
-arti-client       = "0.40.0"
-arti-hsconfig     = "0.40.0"
-arti-client-config = "0.40.0"
+arti-client       = { version = "0.40.0", features = ["full"] }
 tor-rtcompat      = "0.40.0"
 
 # Networking
