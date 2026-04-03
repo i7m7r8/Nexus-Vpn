@@ -34,6 +34,7 @@ async-trait       = "0.1"
 
 # Android / JNI
 android_logger    = "0.14"
+android_log-sys   = "0.3"
 jni               = { version = "0.21", default-features = false }
 log               = "0.4"
 thiserror         = "1.0"

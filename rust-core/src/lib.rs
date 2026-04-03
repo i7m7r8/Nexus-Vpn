@@ -16,6 +16,7 @@ use jni::JNIEnv;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use std::io::Write;
 
 mod tun;
 mod stack;
@@ -27,6 +28,57 @@ use crate::sni::parser::TlsParser;
 use crate::sni::rewriter::SniRewriter;
 
 // ===========================================================================
+// Custom logger that writes to both Android logcat and our UI buffer
+// ===========================================================================
+
+struct DualLogger;
+
+impl log::Log for DualLogger {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool { true }
+
+    fn log(&self, record: &log::Record) {
+        let msg = format!("{}", record.args());
+
+        // Write to Android logcat (via android_logger's underlying mechanism)
+        let android_level = match record.level() {
+            log::Level::Error => android_log_sys::android_LogPriority::ANDROID_LOG_ERROR,
+            log::Level::Warn => android_log_sys::android_LogPriority::ANDROID_LOG_WARN,
+            log::Level::Info => android_log_sys::android_LogPriority::ANDROID_LOG_INFO,
+            log::Level::Debug => android_log_sys::android_LogPriority::ANDROID_LOG_DEBUG,
+            log::Level::Trace => android_log_sys::android_LogPriority::ANDROID_LOG_VERBOSE,
+        };
+        let tag = std::ffi::CString::new("NexusVpn").unwrap();
+        let msg_c = std::ffi::CString::new(&msg[..msg.len().min(4000)]).unwrap_or_default();
+        unsafe {
+            android_log_sys::__android_log_write(
+                android_level as std::os::raw::c_int,
+                tag.as_ptr(),
+                msg_c.as_ptr(),
+            );
+        }
+
+        // Write to UI buffer
+        let timestamp = chrono::Local::now().format("%H:%M:%S");
+        let level = match record.level() {
+            log::Level::Error => "ERROR",
+            log::Level::Warn => "WARN",
+            log::Level::Info => "INFO",
+            log::Level::Debug => "DEBUG",
+            log::Level::Trace => "TRACE",
+        };
+        let line = format!("[{}] {} {}", timestamp, level, msg);
+        let mut buffer = LOG_BUFFER.write();
+        buffer.push(line);
+        // Keep only last 200 lines
+        if buffer.len() > 200 {
+            buffer.drain(..buffer.len() - 200);
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+// ===========================================================================
 // Global state
 // ===========================================================================
 
@@ -35,6 +87,8 @@ static RUNTIME: parking_lot::RwLock<Option<Runtime>> = parking_lot::RwLock::new(
 static SNI_HOST: parking_lot::RwLock<String> = parking_lot::RwLock::new(String::new());
 // Arc-based SNI host that can be updated at runtime (shared with SniInterceptor + SniRuntime)
 static SNI_HOST_SHARED: parking_lot::RwLock<Option<Arc<parking_lot::Mutex<String>>>> = parking_lot::RwLock::new(None);
+// Shared log buffer for UI consumption (last 200 lines)
+static LOG_BUFFER: parking_lot::RwLock<Vec<String>> = parking_lot::RwLock::new(Vec::new());
 
 // ===========================================================================
 // JNI — exposed to Kotlin
@@ -48,10 +102,9 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
     sni_hostname: JString,
     bridge_config: JString,
 ) -> jboolean {
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_tag("NexusVpn"),
-    );
+    // Initialize dual logger (Android logcat + UI buffer)
+    let _ = log::set_boxed_logger(Box::new(DualLogger));
+    log::set_max_level(log::LevelFilter::Debug);
 
     let host: String = env
         .get_string(&sni_hostname)
@@ -132,6 +185,27 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
     } else {
         false as jboolean
     }
+}
+
+/// Get all buffered log lines for the UI log viewer.
+/// Returns a single string with lines separated by '\n'.
+#[no_mangle]
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogsNative(
+    mut env: JNIEnv,
+    _class: jni::objects::JClass,
+) -> jni::objects::JString {
+    let buffer = LOG_BUFFER.read();
+    let logs = buffer.join("\n");
+    env.new_string(&logs).unwrap_or_else(|_| env.new_string("").unwrap()).into_raw()
+}
+
+/// Clear the log buffer.
+#[no_mangle]
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_clearLogsNative(
+    _env: JNIEnv,
+    _class: jni::objects::JClass,
+) {
+    LOG_BUFFER.write().clear();
 }
 
 // ===========================================================================

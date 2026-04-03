@@ -22,11 +22,19 @@ class NexusVpnService : VpnService() {
         private const val TUN_PREFIX = 32
         private const val TUN_MTU = 1500
 
+        // Broadcast actions for UI status updates
+        const val ACTION_STATUS = "com.nexusvpn.android.STATUS"
+        const val EXTRA_STATUS = "status"
+        const val EXTRA_SNI = "sni"
+        const val EXTRA_BRIDGES = "bridges"
+
         init { System.loadLibrary("nexus_vpn") }
 
         @JvmStatic external fun initVpnNative(tunFd: Int, sniHostname: String, bridgeConfig: String): Boolean
         @JvmStatic external fun stopVpnNative()
         @JvmStatic external fun setSniHostnameNative(hostname: String): Boolean
+        @JvmStatic external fun getLogsNative(): String
+        @JvmStatic external fun clearLogsNative()
 
         fun setSniHostnameNative(hostname: String) {
             try { setSniHostnameNative(hostname) } catch (_: UnsatisfiedLinkError) {}
@@ -34,6 +42,19 @@ class NexusVpnService : VpnService() {
     }
 
     private var tunFd: android.os.ParcelFileDescriptor? = null
+    private var currentStatus: String = "Disconnected"
+
+    /** Broadcast status to all listeners (MainActivity) */
+    private fun broadcastStatus(status: String, sni: String = "", bridges: Boolean = false) {
+        currentStatus = status
+        val intent = Intent(ACTION_STATUS).apply {
+            putExtra(EXTRA_STATUS, status)
+            putExtra(EXTRA_SNI, sni)
+            putExtra(EXTRA_BRIDGES, bridges)
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -95,6 +116,7 @@ class NexusVpnService : VpnService() {
             }
             startForeground(NOTIF_ID, notif(statusMsg))
             NexusVpnApplication.prefs.isVpnConnected = true
+            broadcastStatus(statusMsg, sni, prefs.useBridges)
             Log.i(TAG, "VPN started (SNI: $sni, Bridges: ${prefs.useBridges}, KillSwitch: ${prefs.killSwitch})")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start VPN", e)
@@ -104,6 +126,7 @@ class NexusVpnService : VpnService() {
 
     private fun disconnect() {
         NexusVpnApplication.prefs.isVpnConnected = false
+        broadcastStatus("Disconnected")
         try { stopVpnNative() } catch (_: Exception) {}
         try { tunFd?.close() } catch (_: Exception) {}
         tunFd = null
