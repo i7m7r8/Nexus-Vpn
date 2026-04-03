@@ -92,4 +92,5 @@ jobs:
             android/app/build/outputs/apk/release/app-release-unsigned.apk \
             --title "Build $TAG_NAME" \
             --generate-notes \
-            --latest
+            --latest \
+            --force

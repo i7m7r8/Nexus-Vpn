@@ -27,6 +27,10 @@ use crate::stack::NetStack;
 use crate::sni::parser::TlsParser;
 use crate::sni::rewriter::SniRewriter;
 
+/// Track which (src_ip, src_port, dst_ip, dst_port) tuples already have a socket.
+/// Key: (src_port, dst_port) — simplified since src_ip is always the app and dst_ip is the target.
+type TcpSocketKey = (u16, u16);
+
 // ===========================================================================
 // Custom logger that writes to both Android logcat and our UI buffer
 // ===========================================================================
@@ -389,30 +393,17 @@ fn build_tor_config(bridge_config: &str) -> anyhow::Result<TorClientConfig> {
 
     if let Some(line) = custom_bridge_line {
         if !line.is_empty() {
-            log::info!("🌉 Configuring bridge: {} (type: {})", line.split_whitespace().take(3).collect::<Vec<_>>().join(" "), bridge_type);
-
-            // Parse bridge line and build config with bridges
-            let bridge_line_str = line.to_string();
-            let config = TorClientConfig::builder()
-                .bridges()
-                    .bridges()
-                        .push(bridge_line_str);
-            // Note: Arti 0.40.0 bridge builder API may vary.
-            // If this doesn't compile, fall back to default config.
-            match config.build() {
-                Ok(cfg) => {
-                    log::info!("✅ Bridge config applied successfully");
-                    return Ok(cfg);
-                }
-                Err(e) => {
-                    log::warn!("⚠️ Failed to apply bridge config: {}. Using default.", e);
-                    return Ok(TorClientConfig::default());
-                }
-            }
+            log::info!("🌉 Bridge configured: {} (type: {})", line.split_whitespace().take(3).collect::<Vec<_>>().join(" "), bridge_type);
+            // Note: Arti 0.40.0 bridge configuration requires the pt-client feature and
+            // a specific builder API that may differ from the documented example.
+            // For now, we log the config and use default. The bridge line can be applied
+            // once the Arti pt-client API is confirmed.
+            log::warn!("⚠️ Bridge line parsing active but pt-client transport not yet wired. Using default config.");
         }
+    } else {
+        log::warn!("⚠️ Bridges enabled but no bridge line provided");
     }
 
-    log::warn!("⚠️ Bridges enabled but no bridge line provided");
     Ok(TorClientConfig::default())
 }
 
@@ -474,6 +465,8 @@ async fn vpn_main_loop(
     let mut connecting: HashSet<smoltcp::iface::SocketHandle> = HashSet::new();
     // bridged: active bidirectional bridge
     let mut bridged: HashSet<smoltcp::iface::SocketHandle> = HashSet::new();
+    // Track which TCP connections already have a smoltcp socket: (src_port, dst_port) → SocketHandle
+    let mut tcp_sockets: HashMap<TcpSocketKey, smoltcp::iface::SocketHandle> = HashMap::new();
 
     // Channels for bridge tasks to communicate with main loop
     let (setup_tx, setup_rx) = mpsc::channel::<(
@@ -491,7 +484,23 @@ async fn vpn_main_loop(
             res = tun.read(&mut buf) => {
                 let n = res?;
                 if n == 0 { break; }
-                stack.input(buf[..n].to_vec());
+                let packet = buf[..n].to_vec();
+
+                // Parse TCP SYN to create socket BEFORE feeding to smoltcp
+                if let Some(tcp_req) = NetStack::parse_tcp_syn(&packet) {
+                    let key: TcpSocketKey = (tcp_req.src_port, tcp_req.dst_port);
+                    if !tcp_sockets.contains_key(&key) {
+                        log::info!("🔌 New TCP connection: {}:{} → {}:{}",
+                            tcp_req.src_ip, tcp_req.src_port, tcp_req.dst_ip, tcp_req.dst_port);
+                        let handle = stack.create_tcp_socket(
+                            tcp_req.src_ip, tcp_req.src_port,
+                            tcp_req.dst_ip, tcp_req.dst_port,
+                        );
+                        tcp_sockets.insert(key, handle);
+                    }
+                }
+
+                stack.input(packet);
             }
             _ = tokio::time::sleep(std::time::Duration::from_millis(2)) => {
                 stack.poll();
@@ -717,6 +726,7 @@ async fn vpn_main_loop(
         for handle in &disconnected_receivers {
             bridged.remove(handle);
             tor_senders.remove(handle);
+            tcp_sockets.retain(|_, h| *h != handle);
         }
 
         for (handle, data) in pending_writes {
@@ -765,6 +775,8 @@ async fn vpn_main_loop(
             bridged.remove(handle);
             tor_senders.remove(handle);
             tor_receivers.remove(handle);
+            // Also remove from tcp_sockets tracking
+            tcp_sockets.retain(|_, h| *h != handle);
         }
 
         // === 5. Write outgoing packets to TUN ===

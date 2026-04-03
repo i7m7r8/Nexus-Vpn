@@ -36,7 +36,8 @@ class NexusVpnService : VpnService() {
         @JvmStatic external fun getLogsNative(): String
         @JvmStatic external fun clearLogsNative()
 
-        fun setSniHostnameNative(hostname: String) {
+        /** Wrapper that calls the JNI native safely (avoids UnsatisfiedLinkError) */
+        fun updateSniHostname(hostname: String) {
             try { setSniHostnameNative(hostname) } catch (_: UnsatisfiedLinkError) {}
         }
     }
@@ -67,7 +68,7 @@ class NexusVpnService : VpnService() {
             "DISCONNECT" -> disconnect()
             "UPDATE_SNI" -> intent.getStringExtra("sni_host")?.let {
                 NexusVpnApplication.prefs.sniHostname = it
-                try { companion.setSniHostnameNative(it) } catch (_: Exception) {}
+                try { companion.updateSniHostname(it) } catch (_: Exception) {}
             }
         }
         return START_STICKY
@@ -104,6 +105,8 @@ class NexusVpnService : VpnService() {
 
             if (!initVpnNative(tunFd!!.fd, sni, bridgeConfig)) {
                 Log.e(TAG, "initVpnNative returned false")
+                tunFd?.close() // Close TUN fd on failure
+                tunFd = null
                 disconnect()
                 return
             }
@@ -130,13 +133,7 @@ class NexusVpnService : VpnService() {
         try { stopVpnNative() } catch (_: Exception) {}
         try { tunFd?.close() } catch (_: Exception) {}
         tunFd = null
-        val stopType = if (Build.VERSION.SDK_INT >= 29) {
-            STOP_FOREGROUND_PASS
-        } else {
-            @Suppress("DEPRECATION")
-            false
-        }
-        try { stopForeground(stopType) } catch (_: Exception) {}
+        try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
         stopSelf()
         Log.i(TAG, "VPN disconnected")
     }
@@ -160,4 +157,10 @@ class NexusVpnService : VpnService() {
 
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() { disconnect(); super.onDestroy() }
+
+    /** Called when the system revokes VPN permission (e.g., user disables in settings) */
+    override fun onRevoke() {
+        Log.w(TAG, "⚠️ VPN permission revoked by system")
+        disconnect()
+    }
 }

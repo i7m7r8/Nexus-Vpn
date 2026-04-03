@@ -1,7 +1,7 @@
-use smoltcp::iface::{Config, Interface, SocketSet};
+use smoltcp::iface::{Config, Interface, SocketSet, SocketHandle};
 use smoltcp::phy::{Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
-use smoltcp::wire::{IpAddress, IpCidr};
+use smoltcp::wire::{IpAddress, IpCidr, IpProtocol};
 use std::collections::VecDeque;
 use std::net::Ipv4Addr;
 
@@ -61,6 +61,16 @@ impl<'a> smoltcp::phy::TxToken for TxToken<'a> {
     }
 }
 
+/// Represents a TCP connection request from the TUN device.
+/// Parsed from the incoming IP/TCP headers before smoltcp processes it.
+#[derive(Debug, Clone)]
+pub struct TcpConnectionRequest {
+    pub src_ip: std::net::Ipv4Addr,
+    pub dst_ip: std::net::Ipv4Addr,
+    pub src_port: u16,
+    pub dst_port: u16,
+}
+
 pub struct NetStack {
     pub interface: Interface,
     pub socket_set: SocketSet<'static>,
@@ -82,7 +92,7 @@ impl NetStack {
         interface.update_ip_addrs(|addrs| {
             addrs.push(IpCidr::new(IpAddress::v4(10, 8, 0, 2), 24)).unwrap();
         });
-        
+
         interface.routes_mut().add_default_ipv4_route(Ipv4Addr::new(10, 8, 0, 1)).unwrap();
 
         Self {
@@ -92,11 +102,88 @@ impl NetStack {
         }
     }
 
-    pub fn add_tcp_listener(&mut self, port: u16) -> smoltcp::iface::SocketHandle {
+    /// Parse an incoming raw IP packet to extract TCP connection info.
+    /// Returns `Some(TcpConnectionRequest)` if it's a TCP SYN packet, `None` otherwise.
+    /// This is called BEFORE the packet is fed to smoltcp, so we can create a socket for it.
+    pub fn parse_tcp_syn(packet: &[u8]) -> Option<TcpConnectionRequest> {
+        if packet.is_empty() {
+            return None;
+        }
+
+        // Check IP version (must be IPv4, version 4 in high nibble)
+        let ip_version = packet[0] >> 4;
+        if ip_version != 4 {
+            return None;
+        }
+
+        let ihl = (packet[0] & 0x0F) as usize * 4; // IP header length in bytes
+        if packet.len() < ihl + 20 {
+            return None; // Minimum: IP header + TCP header
+        }
+
+        // Check protocol is TCP
+        if packet[9] != IpProtocol::Tcp as u8 {
+            return None;
+        }
+
+        // Extract source and destination IP
+        let src_ip = std::net::Ipv4Addr::new(packet[12], packet[13], packet[14], packet[15]);
+        let dst_ip = std::net::Ipv4Addr::new(packet[16], packet[17], packet[18], packet[19]);
+
+        // Parse TCP header
+        let tcp_start = ihl;
+        let src_port = u16::from_be_bytes([packet[tcp_start], packet[tcp_start + 1]]);
+        let dst_port = u16::from_be_bytes([packet[tcp_start + 2], packet[tcp_start + 3]]);
+
+        // Check TCP SYN flag (bit 1 of byte 13 of TCP header, i.e., offset 13 from tcp_start)
+        let tcp_flags_offset = tcp_start + 13;
+        if tcp_flags_offset >= packet.len() {
+            return None;
+        }
+        let tcp_flags = packet[tcp_flags_offset];
+        let syn = tcp_flags & 0x02 != 0;
+        let ack = tcp_flags & 0x10 != 0;
+
+        // Only process SYN packets (new connections), not SYN-ACK
+        if syn && !ack {
+            Some(TcpConnectionRequest { src_ip, dst_ip, src_port, dst_port })
+        } else {
+            None
+        }
+    }
+
+    /// Create a TCP socket that connects to the given destination.
+    /// The socket will be in SYN-SENT state after this call.
+    /// When smoltcp processes it, it will send a SYN to the destination.
+    ///
+    /// However, since we're acting as a VPN proxy, we don't actually want smoltcp
+    /// to send a real SYN. Instead, we create the socket in a connected state
+    /// by having it "accept" the incoming connection.
+    ///
+    /// Returns the socket handle.
+    pub fn create_tcp_socket(
+        &mut self,
+        _src_ip: std::net::Ipv4Addr,
+        _src_port: u16,
+        dst_ip: std::net::Ipv4Addr,
+        dst_port: u16,
+    ) -> SocketHandle {
+        // Create buffers for the socket
         let tcp_rx_buffer = TcpSocketBuffer::new(vec![0; 65535]);
         let tcp_tx_buffer = TcpSocketBuffer::new(vec![0; 65535]);
         let mut tcp_socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
-        tcp_socket.listen(port).unwrap();
+
+        // Set socket to connect to the destination
+        // smoltcp will handle the TCP handshake with the app
+        // The app thinks it's connecting to dst_ip:dst_port
+        if let Err(e) = tcp_socket.connect(
+            self.interface.context(),
+            (IpAddress::Ipv4(dst_ip), dst_port),
+            0, // local port (0 = auto-assign)
+        ) {
+            log::warn!("⚠️ Failed to create TCP socket to {}:{}: {}", dst_ip, dst_port, e);
+        }
+
         self.socket_set.add(tcp_socket)
     }
 

@@ -193,7 +193,12 @@ fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
             onClick = {
                 if (!vpnStatus.connected) {
                     val vp = VpnService.prepare(ctx)
-                    if (vp != null) { ctx.startActivity(vp); return@Button }
+                    if (vp != null) {
+                        // User hasn't granted VPN permission yet — show system dialog
+                        ctx.startActivity(vp)
+                        return@Button
+                    }
+                    // Permission already granted — start VPN
                     prefs.sniHostname = sniHost
                     ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "CONNECT" })
                 } else {
@@ -223,7 +228,7 @@ fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
                     )
                 )
                 Spacer(Modifier.height(8.dp))
-                Button({ prefs.sniHostname = sniHost; NexusVpnService.setSniHostnameNative(sniHost) },
+                Button({ prefs.sniHostname = sniHost; NexusVpnService.updateSniHostname(sniHost) },
                     colors = ButtonDefaults.buttonColors(containerColor = purple), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                     Text("Apply SNI Change", fontWeight = FontWeight.Bold)
                 }
@@ -344,7 +349,7 @@ fun LogScreen(darkBg: Color, cardBg: Color, green: Color) {
                 if (raw.isNotEmpty()) {
                     val newLines = raw.split("\n").filter { it.isNotBlank() }
                     if (newLines.isNotEmpty()) {
-                        logs = logs + newLines
+                        logs = (logs + newLines).takeLast(500) // Cap at 500 lines
                         // Auto-scroll to bottom
                         if (logs.size > 1) {
                             listState.animateScrollToItem(logs.size - 1)
