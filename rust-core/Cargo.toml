@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Tor / Arti
-arti-client       = { version = "0.40.0", default-features = false, features = ["tokio", "rustls", "compression", "bridge-client", "pt-client", "onion-service-client", "anyhow", "experimental-api"] }
+arti-client       = { version = "0.40.0", default-features = false, features = ["tokio", "rustls", "compression", "bridge-client", "onion-service-client", "anyhow", "experimental-api"] }
 tor-rtcompat      = { version = "0.40.0", default-features = false, features = ["tokio", "rustls"] }
 
 # Networking
@@ -33,7 +33,7 @@ chrono            = { version = "0.4", features = ["serde"] }
 async-trait       = "0.1"
 
 # Android / JNI
-android_logger    = { version = "0.14", features = ["rustls"] }
+android_logger    = "0.14"
 jni               = { version = "0.21", default-features = false }
 log               = "0.4"
 thiserror         = "1.0"
