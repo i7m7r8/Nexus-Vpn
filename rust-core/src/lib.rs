@@ -146,7 +146,10 @@ impl Bridge {
     }
 }
 
-async fn vpn_main_loop(tun_fd: jint, _sni_host: String) -> anyhow::Result<()> {
+use tor_rtcompat::PreferredRuntime;
+use crate::sni::SniTransport;
+
+async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
     let tun = Arc::new(TunDevice::new(tun_fd)?);
     let mut stack = NetStack::new();
     
@@ -158,11 +161,18 @@ async fn vpn_main_loop(tun_fd: jint, _sni_host: String) -> anyhow::Result<()> {
     let _ = udp_socket.bind(smoltcp::wire::IpListenEndpoint::from(53));
     let dns_handle = stack.socket_set.add(udp_socket);
 
-    log::info!("🔄 Bootstrapping Arti (Tor) v0.40.0...");
+    log::info!("🔄 Bootstrapping Arti (Tor) v0.40.0 with SNI Transport: {}...", sni_host);
+    
+    let runtime = PreferredRuntime::current()?;
+    let transport = SniTransport::new(runtime.clone(), sni_host.clone());
     let config = TorClientConfig::default();
-    let tor_client = match TorClient::create_bootstrapped(config).await {
+    
+    let tor_client = match TorClient::with_runtime(runtime)
+        .transport(transport)
+        .create_bootstrapped(config).await 
+    {
         Ok((client, _)) => {
-            log::info!("✅ Arti bootstrapped — Tor connected!");
+            log::info!("✅ Arti bootstrapped — Tor connected via SNI!");
             client
         }
         Err(e) => {
