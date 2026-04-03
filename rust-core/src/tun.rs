@@ -3,6 +3,7 @@ use tokio::io::unix::AsyncFd;
 use std::io::{Read, Write};
 use std::fs::File;
 use std::os::unix::io::FromRawFd;
+use libc;
 
 pub struct TunDevice {
     async_fd: AsyncFd<File>,

@@ -82,7 +82,6 @@ impl NetStack {
             addrs.push(IpCidr::new(IpAddress::v4(10, 8, 0, 2), 24)).unwrap();
         });
         
-        // Add default route
         interface.routes_mut().add_default_ipv4_route(IpAddress::v4(10, 8, 0, 1)).unwrap();
 
         Self {
