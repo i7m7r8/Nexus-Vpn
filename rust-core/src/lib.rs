@@ -601,7 +601,7 @@ async fn vpn_main_loop(
                 let _ = dns_setup_tx_clone.send((query_id, src_endpoint, to_app_rx)).await;
             });
         }
-        drop(dns_socket);
+        // dns_socket borrow ends here
 
         // === 1b. Receive DNS responses and send them back to apps ===
         while let Ok((query_id, endpoint, mut rx)) = dns_setup_rx.try_recv() {

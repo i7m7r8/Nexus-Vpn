@@ -35,6 +35,7 @@ impl<R: Runtime> SniRuntime<R> {
 
 /// Stub connector — not currently used.
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct SniConnector<C> {
     inner: C,
     _sni_host: Arc<parking_lot::Mutex<String>>,
