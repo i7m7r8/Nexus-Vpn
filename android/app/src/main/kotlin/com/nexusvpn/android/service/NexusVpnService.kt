@@ -103,9 +103,24 @@ class NexusVpnService : VpnService() {
             tunFd = builder.establish()
                 ?: return run { Log.e(TAG, "establish() returned null"); disconnect() }
 
-            if (!initVpnNative(tunFd!!.fd, sni, bridgeConfig)) {
-                Log.e(TAG, "initVpnNative returned false")
-                tunFd?.close() // Close TUN fd on failure
+            try {
+                val initResult = initVpnNative(tunFd!!.fd, sni, bridgeConfig)
+                if (!initResult) {
+                    Log.e(TAG, "initVpnNative returned false")
+                    tunFd?.close()
+                    tunFd = null
+                    disconnect()
+                    return
+                }
+            } catch (e: UnsatisfiedLinkError) {
+                Log.e(TAG, "Native library not found", e)
+                tunFd?.close()
+                tunFd = null
+                disconnect()
+                return
+            } catch (e: Exception) {
+                Log.e(TAG, "initVpnNative crashed", e)
+                tunFd?.close()
                 tunFd = null
                 disconnect()
                 return

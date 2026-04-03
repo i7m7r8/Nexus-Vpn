@@ -108,6 +108,21 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
     sni_hostname: JString,
     bridge_config: JString,
 ) -> jboolean {
+    // Catch any panics to prevent crashing the Android process
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        _init_vpn_native(&mut env, tun_fd, sni_hostname, bridge_config)
+    })).unwrap_or_else(|e| {
+        log::error!("🚨 Native init panicked: {:?}", e);
+        false as jboolean
+    })
+}
+
+fn _init_vpn_native(
+    env: &mut JNIEnv,
+    tun_fd: jint,
+    sni_hostname: JString,
+    bridge_config: JString,
+) -> jboolean {
     // Initialize dual logger (Android logcat + UI buffer)
     let _ = log::set_boxed_logger(Box::new(DualLogger));
     log::set_max_level(log::LevelFilter::Debug);
@@ -133,7 +148,7 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
     }
 
     let rt = match tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(4)
+        .worker_threads(2) // Reduced from 4 to save memory on 2GB devices
         .enable_all()
         .build()
     {
