@@ -42,28 +42,24 @@ jobs:
           local-cache: true
 
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v4
 
-      # Generate Gradle wrapper
+      # Generate Gradle wrapper (using 8.10)
       - name: Generate Gradle wrapper
         run: |
           cd android
-          if [ ! -f gradlew ]; then
-            gradle wrapper
-          fi
+          gradle wrapper --gradle-version 8.10
 
       # Build Rust lib for both architectures
       - name: Build Rust lib (arm64-v8a)
         working-directory: rust-core
         run: |
-          mkdir -p ../android/app/src/main/jniLibs/arm64-v8a
-          cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs/arm64-v8a build --release
+          cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build --release
 
       - name: Build Rust lib (x86_64)
         working-directory: rust-core
         run: |
-          mkdir -p ../android/app/src/main/jniLibs/x86_64
-          cargo ndk -t x86_64 -o ../android/app/src/main/jniLibs/x86_64 build --release
+          cargo ndk -t x86_64 -o ../android/app/src/main/jniLibs build --release
 
       # Build Android APKs
       - name: Build debug APK
