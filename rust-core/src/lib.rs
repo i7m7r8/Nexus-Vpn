@@ -105,11 +105,10 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
     }
 }
 
-use smoltcp::wire::IpAddress;
 use smoltcp::socket::udp::{Socket as UdpSocket, PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata};
-use smoltcp::socket::AnySocket;
+use smoltcp::socket::Socket;
 use arti_client::{TorClient, TorClientConfig};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 
 struct Bridge {
     _handle: smoltcp::iface::SocketHandle,
@@ -142,7 +141,7 @@ impl Bridge {
 }
 
 use tor_rtcompat::PreferredRuntime;
-use crate::sni::SniTransport;
+use crate::sni::SniRuntime;
 
 async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
     let tun = Arc::new(TunDevice::new(tun_fd)?);
@@ -158,14 +157,14 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
     log::info!("🔄 Bootstrapping Arti (Tor) v0.40.0 with SNI Transport: {}...", sni_host);
     
     let runtime = PreferredRuntime::current()?;
-    let transport = SniTransport::new(runtime.clone(), sni_host.clone());
+    let sni_runtime = SniRuntime::new(runtime.clone(), sni_host.clone());
     let config = TorClientConfig::default();
     
-    let tor_client = match TorClient::with_runtime(runtime)
-        .transport(transport)
-        .create_bootstrapped(config).await 
+    let tor_client = match TorClient::with_runtime(sni_runtime)
+        .config(config)
+        .create_bootstrapped().await 
     {
-        Ok((client, _)) => {
+        Ok(client) => {
             log::info!("✅ Arti bootstrapped — Tor connected via SNI!");
             client
         }
@@ -204,8 +203,7 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
         // 2. Process TCP connections
         let mut sockets_to_bridge = Vec::new();
         for (handle, socket) in stack.socket_set.iter_mut() {
-            let any_socket: &mut dyn AnySocket = socket;
-            if let Some(tcp_socket) = smoltcp::socket::tcp::Socket::downcast_mut(any_socket) {
+            if let Socket::Tcp(tcp_socket) = socket {
                 if tcp_socket.is_active() && tcp_socket.state() == smoltcp::socket::tcp::State::Established {
                     if let Some(endpoint) = tcp_socket.remote_endpoint() {
                         sockets_to_bridge.push((handle, endpoint));

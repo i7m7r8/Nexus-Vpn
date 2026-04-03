@@ -2,19 +2,58 @@ use async_trait::async_trait;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use futures_io::{AsyncRead, AsyncWrite};
-use tor_rtcompat::{NetStreamProvider, NetStreamListener, StreamOps};
+use tor_rtcompat::{NetStreamProvider, NetStreamListener, StreamOps, SleepProvider, SpawnProvider, TlsProvider};
 use std::task::{Context, Poll};
 use futures::stream::Stream;
+use std::time::Duration;
 
 #[derive(Clone)]
-pub struct SniTransport<R: NetStreamProvider<SocketAddr>> {
+pub struct SniRuntime<R: tor_rtcompat::Runtime> {
     inner: R,
     sni_host: String,
 }
 
-impl<R: NetStreamProvider<SocketAddr>> SniTransport<R> {
+impl<R: tor_rtcompat::Runtime> SniRuntime<R> {
     pub fn new(inner: R, sni_host: String) -> Self {
         Self { inner, sni_host }
+    }
+}
+
+impl<R: tor_rtcompat::Runtime> SpawnProvider for SniRuntime<R> {
+    fn spawn_obj(&self, future: futures::future::FutureObj<'static, ()>) -> Result<(), futures::task::SpawnError> {
+        self.inner.spawn_obj(future)
+    }
+}
+
+impl<R: tor_rtcompat::Runtime> SleepProvider for SniRuntime<R> {
+    type SleepFuture = R::SleepFuture;
+    fn sleep(&self, duration: Duration) -> Self::SleepFuture {
+        self.inner.sleep(duration)
+    }
+}
+
+#[async_trait]
+impl<R: tor_rtcompat::Runtime> NetStreamProvider<SocketAddr> for SniRuntime<R> {
+    type Stream = WrappedStream<R::Stream>;
+    type Listener = WrappedListener<R::Listener, R::Stream>;
+
+    async fn connect(&self, addr: &SocketAddr) -> std::io::Result<Self::Stream> {
+        let stream = self.inner.connect(addr).await?;
+        log::debug!("🎭 Spoofing SNI to {} for connection to {}", self.sni_host, addr);
+        Ok(WrappedStream { inner: stream })
+    }
+
+    async fn listen(&self, addr: &SocketAddr) -> std::io::Result<Self::Listener> {
+        let listener = self.inner.listen(addr).await?;
+        Ok(WrappedListener { inner: listener, _phantom: std::marker::PhantomData })
+    }
+}
+
+impl<R: tor_rtcompat::Runtime> TlsProvider<WrappedStream<R::Stream>> for SniRuntime<R> {
+    type Connector = R::TlsConnector;
+    type TlsStream = R::TlsStream;
+    fn tls_connector(&self) -> Self::Connector {
+        self.inner.tls_connector()
     }
 }
 
@@ -82,28 +121,11 @@ impl<I: Stream<Item = std::io::Result<(S, SocketAddr)>> + Unpin, S: AsyncRead + 
     type Item = std::io::Result<(WrappedStream<S>, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match Pin::new(&mut self.inner).poll_next(cx) {
+        match Pin::new(&mut self.get_mut().inner).poll_next(cx) {
             Poll::Ready(Some(Ok((stream, addr)))) => Poll::Ready(Some(Ok((WrappedStream { inner: stream }, addr)))),
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
-    }
-}
-
-#[async_trait]
-impl<R: NetStreamProvider<SocketAddr>> NetStreamProvider<SocketAddr> for SniTransport<R> {
-    type Stream = WrappedStream<R::Stream>;
-    type Listener = WrappedListener<R::Listener, R::Stream>;
-
-    async fn connect(&self, addr: &SocketAddr) -> std::io::Result<Self::Stream> {
-        let stream = self.inner.connect(addr).await?;
-        log::debug!("🎭 Spoofing SNI to {} for connection to {}", self.sni_host, addr);
-        Ok(WrappedStream { inner: stream })
-    }
-
-    async fn listen(&self, addr: &SocketAddr) -> std::io::Result<Self::Listener> {
-        let listener = self.inner.listen(addr).await?;
-        Ok(WrappedListener { inner: listener, _phantom: std::marker::PhantomData })
     }
 }
