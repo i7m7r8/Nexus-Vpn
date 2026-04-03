@@ -108,35 +108,71 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 use smoltcp::socket::udp::{Socket as UdpSocket, PacketBuffer as UdpPacketBuffer, PacketMetadata as UdpPacketMetadata};
 use smoltcp::socket::Socket;
 use arti_client::{TorClient, TorClientConfig};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::collections::{HashMap, HashSet};
+use tokio::sync::mpsc;
 
-struct Bridge {
-    _handle: smoltcp::iface::SocketHandle,
-}
+struct Bridge;
 
 impl Bridge {
-    async fn copy(
-        _handle: smoltcp::iface::SocketHandle,
-        mut tor_stream: arti_client::DataStream,
+    /// Spawn a bidirectional bridge between a Tor stream and smoltcp socket.
+    /// Returns (receiver for Tor→smoltcp data, sender for smoltcp→Tor data).
+    fn spawn(
+        handle: smoltcp::iface::SocketHandle,
+        tor_stream: arti_client::DataStream,
+    ) -> (
+        mpsc::Receiver<(smoltcp::iface::SocketHandle, Vec<u8>)>,
+        mpsc::Sender<Vec<u8>>,
     ) {
-        let mut tor_buf = vec![0u8; 8192];
-        
-        loop {
-            tokio::select! {
-                res = tor_stream.read(&mut tor_buf) => {
-                    match res {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            log::debug!("📥 Tor -> smoltcp: {} bytes", n);
+        let (to_smoltcp_tx, to_smoltcp_rx) = mpsc::channel::<(smoltcp::iface::SocketHandle, Vec<u8>)>(16);
+        let (to_tor_tx, mut to_tor_rx) = mpsc::channel::<Vec<u8>>(16);
+
+        tokio::spawn(async move {
+            let mut tor_buf = vec![0u8; 8192];
+
+            loop {
+                tokio::select! {
+                    // Tor → smoltcp
+                    res = tor_stream.read(&mut tor_buf) => {
+                        match res {
+                            Ok(0) => {
+                                log::debug!("🔌 Tor stream EOF for socket {:?}", handle);
+                                break;
+                            }
+                            Ok(n) => {
+                                log::debug!("📥 Tor → smoltcp: {} bytes (socket {:?})", n, handle);
+                                if to_smoltcp_tx.send((handle, tor_buf[..n].to_vec())).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("❌ Tor read error (socket {:?}): {}", handle, e);
+                                break;
+                            }
                         }
-                        Err(e) => {
-                            log::error!("❌ Tor read error: {}", e);
-                            break;
+                    }
+                    // smoltcp → Tor
+                    res = to_tor_rx.recv() => {
+                        match res {
+                            Some(data) => {
+                                if let Err(e) = tor_stream.write_all(&data).await {
+                                    log::error!("❌ Tor write error (socket {:?}): {}", handle, e);
+                                    break;
+                                }
+                                log::debug!("📤 smoltcp → Tor: {} bytes (socket {:?})", data.len(), handle);
+                            }
+                            None => {
+                                log::debug!("🔌 smoltcp channel closed for socket {:?}", handle);
+                                break;
+                            }
                         }
                     }
                 }
             }
-        }
+            log::debug!("🚪 Bridge task exited for socket {:?}", handle);
+        });
+
+        (to_smoltcp_rx, to_tor_tx)
     }
 }
 
@@ -178,6 +214,23 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
 
     let mut buf = vec![0u8; 16384];
 
+    // Track which sockets have been bridged (prevent infinite duplicates)
+    let mut bridged: HashSet<smoltcp::iface::SocketHandle> = HashSet::new();
+    // Track sockets with in-flight Tor connection attempts (prevent duplicate spawns)
+    let mut connecting: HashSet<smoltcp::iface::SocketHandle> = HashSet::new();
+    // Receivers for Tor → smoltcp data (one per bridged socket)
+    let mut tor_receivers: HashMap<smoltcp::iface::SocketHandle, mpsc::Receiver<(smoltcp::iface::SocketHandle, Vec<u8>)>> = HashMap::new();
+    // Senders for smoltcp → Tor data (one per bridged socket)
+    let mut tor_senders: HashMap<smoltcp::iface::SocketHandle, mpsc::Sender<Vec<u8>>> = HashMap::new();
+    // Channel for bridge tasks to return their channel endpoints to the main loop
+    let (setup_tx, setup_rx) = mpsc::channel::<(
+        smoltcp::iface::SocketHandle,
+        mpsc::Receiver<(smoltcp::iface::SocketHandle, Vec<u8>)>,
+        mpsc::Sender<Vec<u8>>,
+    )>(32);
+    // Channel for bridge tasks to report connection failures (so we can retry)
+    let (fail_tx, fail_rx) = mpsc::channel::<smoltcp::iface::SocketHandle>(32);
+
     while RUNNING.load(Ordering::SeqCst) {
         tokio::select! {
             res = tun.read(&mut buf) => {
@@ -190,46 +243,141 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
             }
         }
 
-        // 1. Process DNS queries
+        // 1. Process DNS queries (stub — log only for now)
         let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
         if let Ok((data, endpoint)) = dns_socket.recv() {
             let _query_data = data.to_vec();
-            tokio::spawn(async move {
-                log::debug!("🌐 Intercepted DNS query from {}", endpoint);
-            });
+            log::debug!("🌐 Intercepted DNS query from {}", endpoint);
         }
         drop(dns_socket);
 
-        // 2. Process TCP connections
-        let mut sockets_to_bridge = Vec::new();
+        // 2. Process TCP connections — bridge new established sockets
+        let mut new_connections = Vec::new();
         for (handle, socket) in stack.socket_set.iter_mut() {
             if let Socket::Tcp(tcp_socket) = socket {
-                if tcp_socket.is_active() && tcp_socket.state() == smoltcp::socket::tcp::State::Established {
+                if tcp_socket.is_active()
+                    && tcp_socket.state() == smoltcp::socket::tcp::State::Established
+                    && !bridged.contains(&handle)
+                    && !connecting.contains(&handle)
+                {
                     if let Some(endpoint) = tcp_socket.remote_endpoint() {
-                        sockets_to_bridge.push((handle, endpoint));
+                        new_connections.push((handle, endpoint));
                     }
                 }
             }
         }
 
-        for (handle, endpoint) in sockets_to_bridge {
+        for (handle, endpoint) in new_connections {
+            connecting.insert(handle);
             let tor_clone = tor_client.clone();
+            let setup_tx = setup_tx.clone();
+            let fail_tx = fail_tx.clone();
             let target_host = endpoint.addr.to_string();
             let target_port = endpoint.port;
-            
+
             log::info!("🔗 Bridging TCP connection to Tor: {}:{}", target_host, target_port);
-            
+
             tokio::spawn(async move {
                 match tor_clone.connect((target_host.clone(), target_port)).await {
                     Ok(tor_stream) => {
-                        log::debug!("✅ Connected to {} via Tor", target_host);
-                        Bridge::copy(handle, tor_stream).await;
+                        log::info!("✅ Connected to {} via Tor (socket {:?})", target_host, handle);
+                        let (rx, tx) = Bridge::spawn(handle, tor_stream);
+                        let _ = setup_tx.send((handle, rx, tx)).await;
                     }
-                    Err(e) => log::error!("❌ Failed to connect to {} via Tor: {}", target_host, e),
+                    Err(e) => {
+                        log::error!("❌ Failed to connect to {} via Tor: {}", target_host, e);
+                        let _ = fail_tx.send(handle).await;
+                    }
                 }
             });
         }
 
+        // 2b. Receive channel setup confirmations from bridge tasks
+        while let Ok((handle, rx, tx)) = setup_rx.try_recv() {
+            connecting.remove(&handle);
+            tor_receivers.insert(handle, rx);
+            tor_senders.insert(handle, tx);
+            bridged.insert(handle);
+        }
+
+        // 2c. Receive connection failures — remove from connecting so they can retry
+        while let Ok(handle) = fail_rx.try_recv() {
+            connecting.remove(&handle);
+        }
+
+        // 3. Read Tor → smoltcp data and write it back to the socket
+        //    Collect data first to avoid borrow conflicts on socket_set
+        let mut pending_writes: Vec<(smoltcp::iface::SocketHandle, Vec<u8>)> = Vec::new();
+        let mut disconnected_receivers = Vec::new();
+        tor_receivers.retain(|handle, receiver| {
+            loop {
+                match receiver.try_recv() {
+                    Ok((h, data)) => pending_writes.push((h, data)),
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                        disconnected_receivers.push(*handle);
+                        return false;
+                    }
+                }
+            }
+            true
+        });
+        // Clean up handles whose bridge tasks have exited
+        for handle in &disconnected_receivers {
+            bridged.remove(handle);
+            tor_senders.remove(handle);
+        }
+
+        for (handle, data) in pending_writes {
+            if let Some(socket) = stack.socket_set.get_mut::<Socket>(handle) {
+                if let Socket::Tcp(tcp_socket) = socket {
+                    if tcp_socket.can_send() {
+                        let n = tcp_socket.send_slice(&data).unwrap_or(0);
+                        if n > 0 {
+                            log::debug!("✍️ Wrote {}/{} bytes to smoltcp socket {:?}", n, data.len(), handle);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Read smoltcp → Tor data from bridged sockets and send to bridge
+        let mut stale_handles = Vec::new();
+        for &handle in bridged.iter() {
+            if let Some(sender) = tor_senders.get(&handle) {
+                if let Some(socket) = stack.socket_set.get_mut::<Socket>(handle) {
+                    if let Socket::Tcp(tcp_socket) = socket {
+                        if tcp_socket.can_recv() {
+                            let mut data = vec![0u8; 8192];
+                            if let Ok(n) = tcp_socket.recv_slice(&mut data) {
+                                if n > 0 {
+                                    data.truncate(n);
+                                    if sender.try_send(data).is_err() {
+                                        log::debug!("🚫 Tor channel full for socket {:?}, dropping", handle);
+                                    }
+                                }
+                            }
+                        }
+                        // Detect closed sockets
+                        if tcp_socket.state() == smoltcp::socket::tcp::State::CloseWait
+                            || tcp_socket.state() == smoltcp::socket::tcp::State::Closed
+                            || tcp_socket.state() == smoltcp::socket::tcp::State::TimeWait
+                        {
+                            log::info!("🔌 Socket {:?} closed (state: {:?})", handle, tcp_socket.state());
+                            stale_handles.push(handle);
+                        }
+                    }
+                }
+            }
+        }
+        // Clean up stale entries outside the iteration
+        for handle in &stale_handles {
+            bridged.remove(handle);
+            tor_senders.remove(handle);
+            tor_receivers.remove(handle);
+        }
+
+        // 5. Write outgoing packets to TUN
         while let Some(out_packet) = stack.output() {
             tun.write(&out_packet).await?;
         }
