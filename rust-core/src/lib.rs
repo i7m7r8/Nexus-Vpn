@@ -6,35 +6,28 @@
 use jni::objects::JString;
 use jni::sys::{jboolean, jint};
 use jni::JNIEnv;
-use std::cell::RefCell;
-use std::os::unix::io::{FromRawFd as _, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::runtime::Runtime;
 
-use arti_client::{TorClient, TorClientConfig};
+mod tun;
+mod stack;
+pub mod sni;
+
+use crate::tun::TunDevice;
+use crate::stack::NetStack;
 
 // ===========================================================================
-// Global state (one session per VPN connection)
+// Global state
 // ===========================================================================
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
-
-thread_local! {
-    static TOR_RUNTIME: RefCell<Option<tokio::runtime::Runtime>> = const { RefCell::new(None) };
-    static TOR_CLIENT: RefCell<Option<arti_client::TorClient<arti_client::client::TorClientState>>> 
-        = const { RefCell::new(None) };
-    static SNI_HOST: RefCell<String> = const { RefCell::new(String::new()) };
-    static TUN_FD: RefCell<Option<std::fs::File>> = const { RefCell::new(None) };
-}
+static RUNTIME: parking_lot::RwLock<Option<Runtime>> = parking_lot::RwLock::new(None);
 
 // ===========================================================================
 // JNI — exposed to Kotlin
 // ===========================================================================
 
-/// Initialise the Rust VPN core.  Called once after the Android
-/// `VpnService.Builder.establish()` returns a TUN fd.
-///
-/// # Safety
-/// `tun_fd` must be a valid, open TUN fd obtained from `VpnService`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_initVpnNative(
     mut env: JNIEnv,
@@ -53,97 +46,48 @@ pub unsafe extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_
         .map(|h| h.into())
         .unwrap_or_else(|_| String::from("www.cloudflare.com"));
 
-    SNI_HOST.with(|s| *s.borrow_mut() = host.clone());
+    log::info!("🚀 Initializing Nexus VPN Core (SNI: {})", host);
 
-    // Wrap TUN fd for blocking read/write
-    let tun_file = std::fs::File::from_raw_fd(tun_fd as RawFd);
-    TUN_FD.with(|f| *f.borrow_mut() = Some(tun_file));
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            log::error!("❌ Failed to create Tokio runtime: {e}");
+            return false as jboolean;
+        }
+    };
 
-    // Spawn a background thread running Tokio + Arti bootstrap
-    std::thread::spawn(move || {
-        let rt = match tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => rt,
-            Err(e) => {
-                log::error!("Failed to create Tokio runtime: {e}");
-                return;
-            }
-        };
-        TOR_RUNTIME.with(|r| *r.borrow_mut() = Some(rt));
+    RUNNING.store(true, Ordering::SeqCst);
 
-        TOR_RUNTIME.with(|r| {
-            let rt = r.borrow();
-            let rt = match rt.as_ref() {
-                Some(rt) => rt,
-                None => return,
-            };
-
-            rt.block_on(async {
-                log::info!("🔄 Bootstrapping Arti (Tor) v0.40.0...");
-                
-                let config = TorClientConfig::default();
-                match TorClient::create_bootstrapped(config).await {
-                    Ok((client, _bootstrap)) => {
-                        log::info!("✅ Arti bootstrapped — Tor connected!");
-                        TOR_CLIENT.with(|c| *c.borrow_mut() = Some(client));
-                        RUNNING.store(true, Ordering::SeqCst);
-                        
-                        // Start TUN packet loop
-                        tun_loop(host).await;
-                    }
-                    Err(e) => {
-                        log::error!("❌ Arti bootstrap failed: {e}");
-                    }
-                }
-            });
-        });
+    rt.spawn(async move {
+        if let Err(e) = vpn_main_loop(tun_fd, host).await {
+            log::error!("🚨 VPN Main Loop Error: {e}");
+            RUNNING.store(false, Ordering::SeqCst);
+        }
     });
 
-    log::info!("✅ initVpnNative OK — SNI host = {host}  fd = {tun_fd}");
+    *RUNTIME.write() = Some(rt);
     true as jboolean
 }
 
-/// Main packet-processing loop: reads from TUN, forwards through Arti.
-async fn tun_loop(_sni_host: String) {
-    let mut buf = vec![0u8; 65_536];
-
-    while RUNNING.load(Ordering::SeqCst) {
-        // Read one IP packet from TUN
-        // In a real implementation we'd read, parse TCP, handle TLS SNI rewriting,
-        // and forward through the Arti stream.
-        // For now, this loop just keeps the VPN alive.
-
-        // Sleep to prevent busy-waiting when no traffic
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        
-        // Try read from TUN fd
-        TUN_FD.with(|f| {
-            let guard = f.borrow();
-            if let Some(file) = guard.as_ref() {
-                // Non-blocking check — real impl would use mio/tokio-fd
-            }
-        });
-    }
-}
-
-/// Stop the packet loop and shut down Arti.
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_stopVpnNative(
     _env: JNIEnv,
     _class: jni::objects::JClass,
 ) {
+    log::info!("🛑 Stopping Nexus VPN Core");
     RUNNING.store(false, Ordering::SeqCst);
-    TOR_CLIENT.with(|c| *c.borrow_mut() = None);
-    TOR_RUNTIME.with(|r| *r.borrow_mut() = None);
-    TUN_FD.with(|f| *f.borrow_mut() = None);
-    SNI_HOST.with(|s| s.borrow_mut().clear());
-    log::info!("🧹 stopVpnNative — all resources released");
+    
+    // Drop runtime to stop all tasks
+    let mut rt_guard = RUNTIME.write();
+    if let Some(rt) = rt_guard.take() {
+        rt.shutdown_background();
+    }
 }
 
-/// Update the SNI hostname while VPN is running.
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniHostnameNative(
     mut env: JNIEnv,
@@ -152,10 +96,174 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 ) -> jboolean {
     if let Ok(s) = env.get_string(&hostname) {
         let h: String = s.into();
-        SNI_HOST.with(|cell| *cell.borrow_mut() = h.clone());
+        *SNI_HOST.write() = h.clone();
         log::info!("📝 SNI hostname updated: {h}");
         true as jboolean
     } else {
         false as jboolean
     }
+}
+
+use smoltcp::wire::IpAddress;
+use smoltcp::socket::udp::{Socket as UdpSocket, SocketBuffer as UdpSocketBuffer};
+use smoltcp::socket::udp::PacketBuffer as UdpPacketBuffer;
+use arti_client::{TorClient, TorClientConfig};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+struct Bridge {
+    handle: smoltcp::iface::SocketHandle,
+}
+
+impl Bridge {
+    async fn copy(
+        handle: smoltcp::iface::SocketHandle,
+        mut tor_stream: arti_client::DataStream,
+        // We need a way to access the stack from this task
+        // In a real implementation, we'd use a channel or a shared Arc<Mutex<NetStack>>
+    ) {
+        let mut tor_buf = vec![0u8; 8192];
+        
+        loop {
+            tokio::select! {
+                // Read from Tor -> Write to smoltcp
+                res = tor_stream.read(&mut tor_buf) => {
+                    match res {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            log::debug!("📥 Tor -> smoltcp: {} bytes", n);
+                            // Push to stack's TCP socket send buffer
+                        }
+                        Err(e) => {
+                            log::error!("❌ Tor read error: {}", e);
+                            break;
+                        }
+                    }
+                }
+                // Read from smoltcp -> Write to Tor
+                // (Logic to poll smoltcp socket and write to tor_stream)
+            }
+        }
+    }
+}
+
+async fn vpn_main_loop(tun_fd: jint, _sni_host: String) -> anyhow::Result<()> {
+    let tun = Arc::new(TunDevice::new(tun_fd)?);
+    let mut stack = NetStack::new();
+    
+    // Setup UDP DNS interceptor
+    let udp_rx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 1024]); 16], vec![0; 16384]);
+    let udp_tx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 1024]); 16], vec![0; 16384]);
+    let mut udp_socket = UdpSocket::new(udp_rx_buffer, udp_tx_buffer);
+    // Bind to the virtual interface IP
+    let _ = udp_socket.bind(smoltcp::wire::IpListenEndpoint::from(53));
+    let dns_handle = stack.socket_set.add(udp_socket);
+
+    log::info!("🔄 Bootstrapping Arti (Tor) v0.40.0...");
+    let config = TorClientConfig::default();
+    let tor_client = match TorClient::create_bootstrapped(config).await {
+        Ok((client, _)) => {
+            log::info!("✅ Arti bootstrapped — Tor connected!");
+            client
+        }
+        Err(e) => {
+            log::error!("❌ Arti bootstrap failed: {e}");
+            return Err(e.into());
+        }
+    };
+
+    log::info!("✅ TUN Device and NetStack initialized");
+
+    let mut buf = vec![0u8; 16384];
+
+    while RUNNING.load(Ordering::SeqCst) {
+        tokio::select! {
+            // Read from TUN
+            res = tun.read(&mut buf) => {
+                let n = res?;
+                if n == 0 { break; }
+                stack.input(buf[..n].to_vec());
+            }
+            // Wait for stack to be ready for polling or timeout
+            _ = tokio::time::sleep(std::time::Duration::from_millis(2)) => {
+                stack.poll();
+            }
+        }
+
+        // 1. Process DNS queries
+        let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
+        if let Ok((data, endpoint)) = dns_socket.recv() {
+            let tor_clone = tor_client.clone();
+            let query_data = data.to_vec();
+            let mut response_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
+            
+            tokio::spawn(async move {
+                // Simplified DNS parsing to extract the domain
+                if query_data.len() > 12 {
+                    let mut pos = 12;
+                    let mut domain = String::new();
+                    while pos < query_data.len() {
+                        let len = query_data[pos] as usize;
+                        if len == 0 { break; }
+                        if pos + 1 + len > query_data.len() { break; }
+                        if !domain.is_empty() { domain.push('.'); }
+                        domain.push_str(&String::from_utf8_lossy(&query_data[pos+1..pos+1+len]));
+                        pos += 1 + len;
+                    }
+
+                    if !domain.is_empty() {
+                        log::info!("🌐 Resolving via Tor: {}", domain);
+                        match tor_clone.resolve(&domain).await {
+                            Ok(ips) => {
+                                if let Some(ip) = ips.first() {
+                                    log::debug!("✅ Resolved {} -> {}", domain, ip);
+                                    // In a full implementation, we'd craft a DNS response packet
+                                    // and send it back via response_socket.
+                                }
+                            }
+                            Err(e) => log::error!("❌ DNS resolution failed for {}: {}", domain, e),
+                        }
+                    }
+                }
+            });
+        }
+        drop(dns_socket);
+
+        // 2. Process TCP connections
+        let mut sockets_to_bridge = Vec::new();
+        for (handle, socket) in stack.socket_set.iter_mut() {
+            if let Some(tcp_socket) = smoltcp::socket::tcp::Socket::downcast_mut(socket) {
+                if tcp_socket.is_active() && tcp_socket.state() == smoltcp::socket::tcp::State::Established {
+                    // This is an established virtual connection that needs bridging to Tor
+                    if let Some(endpoint) = tcp_socket.remote_endpoint() {
+                        sockets_to_bridge.push((handle, endpoint));
+                    }
+                }
+            }
+        }
+
+        for (handle, endpoint) in sockets_to_bridge {
+            let tor_clone = tor_client.clone();
+            let target_host = endpoint.addr.to_string();
+            let target_port = endpoint.port;
+            
+            log::info!("🔗 Bridging TCP connection to Tor: {}:{}", target_host, target_port);
+            
+            tokio::spawn(async move {
+                match tor_clone.connect((target_host.clone(), target_port)).await {
+                    Ok(mut tor_stream) => {
+                        log::debug!("✅ Connected to {} via Tor", target_host);
+                        // Bi-directional copy logic would go here
+                        // Mapping smoltcp socket read/write to tor_stream
+                    }
+                    Err(e) => log::error!("❌ Failed to connect to {} via Tor: {}", target_host, e),
+                }
+            });
+        }
+        while let Some(out_packet) = stack.output() {
+            tun.write(&out_packet).await?;
+        }
+    }
+
+    log::info!("👋 VPN Main Loop exiting");
+    Ok(())
 }
