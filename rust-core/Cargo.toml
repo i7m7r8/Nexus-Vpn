@@ -16,7 +16,7 @@ arti-client       = { version = "0.40.0", default-features = false, features = [
 tor-rtcompat      = { version = "0.40.0", default-features = false, features = ["tokio", "rustls"] }
 
 # Networking
-smoltcp           = { version = "0.12", default-features = false, features = ["std", "log", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp", "socket-raw"] }
+smoltcp           = { version = "0.12", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "socket-udp", "socket-raw"] }
 etherparse        = "0.17"
 socket2           = "0.5"
 
