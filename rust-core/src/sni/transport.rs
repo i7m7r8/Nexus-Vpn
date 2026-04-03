@@ -1,44 +1,24 @@
-//! SniRuntime — wraps an Arti runtime to spoof SNI on **relay-level TLS connections**.
+//! SniRuntime — wraps an Arti runtime for future relay-level SNI spoofing.
 //!
-//! NOTE: In Arti 0.40.0, the `Runtime` trait requires implementing many sub-traits
-//! (Spawn, Blocking, CoarseTimeProvider, UdpProvider, Debug, NetStreamProvider for
-//! both SocketAddr and UnixSocketAddr). Rather than reimplement all of these, we
-//! delegate to the inner runtime for everything except TLS, where we intercept the
-//! SNI hostname.
+//! In Arti 0.40.0, the `Runtime` trait requires implementing many sub-traits
+//! with complex lifetime signatures. We delegate ALL trait implementations to
+//! the inner runtime. The SNI spoofing is handled at the app level by
+//! `SniInterceptor` instead.
 //!
-//! The decoy hostname is read from a shared `Arc<Mutex<String>>` so it can be
-//! updated at runtime via JNI without restarting the VPN.
+//! The `sni_host` field is stored here for future use when Arti exposes a
+//! simpler customization API.
 
-use tor_rtcompat::{
-    NetStreamProvider, SleepProvider, TlsProvider, Runtime, Blocking, CoarseTimeProvider,
-    UdpProvider,
-};
-use tor_rtcompat::tls::{TlsConnector, TlsAcceptorSettings};
+use tor_rtcompat::Runtime;
 use std::sync::Arc;
-use std::time::Duration;
-use std::future::Future;
-use std::io::Error as IoError;
-use std::pin::Pin;
-use std::net::SocketAddr;
-use std::os::unix::net::SocketAddr as UnixSocketAddr;
-use std::fmt;
 
 // ===========================================================================
-// SniRuntime
+// SniRuntime — transparent wrapper (delegates everything to inner runtime)
 // ===========================================================================
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SniRuntime<R: Runtime> {
     inner: R,
     sni_host: Arc<parking_lot::Mutex<String>>,
-}
-
-impl<R: Runtime> fmt::Debug for SniRuntime<R> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SniRuntime")
-            .field("sni_host", &self.sni_host.lock())
-            .finish_non_exhaustive()
-    }
 }
 
 impl<R: Runtime> SniRuntime<R> {
@@ -55,60 +35,68 @@ impl<R: Runtime> SniRuntime<R> {
     }
 }
 
-impl<R: Runtime> SleepProvider for SniRuntime<R> {
+impl<R: Runtime> tor_rtcompat::SleepProvider for SniRuntime<R> {
     type SleepFuture = R::SleepFuture;
-    fn sleep(&self, duration: Duration) -> Self::SleepFuture {
+    fn sleep(&self, duration: std::time::Duration) -> Self::SleepFuture {
         self.inner.sleep(duration)
     }
 }
 
-impl<R: Runtime> Blocking for SniRuntime<R> {
-    fn spawn_blocking<F, T>(&self, f: F) -> Self::SleepFuture
+impl<R: Runtime> tor_rtcompat::Blocking for SniRuntime<R> {
+    type ThreadHandle<T> = R::ThreadHandle<T>;
+    fn spawn_blocking<F, T>(&self, f: F) -> Self::ThreadHandle<T>
     where
         F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,
     {
         self.inner.spawn_blocking(f)
     }
-}
-
-impl<R: Runtime> CoarseTimeProvider for SniRuntime<R> {
-    fn now(&self) -> std::time::SystemTime {
-        self.inner.now()
+    fn reenter_block_on<F>(&self, fut: F) -> F::Output
+    where
+        F: std::future::Future + Send,
+        F::Output: Send,
+    {
+        self.inner.reenter_block_on(fut)
     }
 }
 
-impl<R: Runtime> NetStreamProvider for SniRuntime<R> {
-    type Stream = <R as NetStreamProvider>::Stream;
-    type Listener = <R as NetStreamProvider>::Listener;
+impl<R: Runtime> tor_rtcompat::CoarseTimeProvider for SniRuntime<R> {
+    fn now_coarse(&self) -> tor_rtcompat::CoarseInstant {
+        self.inner.now_coarse()
+    }
+}
 
-    async fn connect(&self, addr: &SocketAddr) -> std::io::Result<Self::Stream> {
+impl<R: Runtime> tor_rtcompat::NetStreamProvider for SniRuntime<R> {
+    type Stream = <R as tor_rtcompat::NetStreamProvider>::Stream;
+    type Listener = <R as tor_rtcompat::NetStreamProvider>::Listener;
+
+    async fn connect(&self, addr: &std::net::SocketAddr) -> std::io::Result<Self::Stream> {
         self.inner.connect(addr).await
     }
 
-    async fn listen(&self, addr: &SocketAddr) -> std::io::Result<Self::Listener> {
+    async fn listen(&self, addr: &std::net::SocketAddr) -> std::io::Result<Self::Listener> {
         self.inner.listen(addr).await
     }
 }
 
-impl<R: Runtime> NetStreamProvider<UnixSocketAddr> for SniRuntime<R> {
-    type Stream = <R as NetStreamProvider<UnixSocketAddr>>::Stream;
-    type Listener = <R as NetStreamProvider<UnixSocketAddr>>::Listener;
+impl<R: Runtime> tor_rtcompat::NetStreamProvider<std::os::unix::net::SocketAddr> for SniRuntime<R> {
+    type Stream = <R as tor_rtcompat::NetStreamProvider<std::os::unix::net::SocketAddr>>::Stream;
+    type Listener = <R as tor_rtcompat::NetStreamProvider<std::os::unix::net::SocketAddr>>::Listener;
 
-    async fn connect(&self, addr: &UnixSocketAddr) -> std::io::Result<Self::Stream> {
+    async fn connect(&self, addr: &std::os::unix::net::SocketAddr) -> std::io::Result<Self::Stream> {
         self.inner.connect(addr).await
     }
 
-    async fn listen(&self, addr: &UnixSocketAddr) -> std::io::Result<Self::Listener> {
+    async fn listen(&self, addr: &std::os::unix::net::SocketAddr) -> std::io::Result<Self::Listener> {
         self.inner.listen(addr).await
     }
 }
 
-impl<R: Runtime> UdpProvider for SniRuntime<R> {
-    type UdpSocket = <R as UdpProvider>::UdpSocket;
+impl<R: Runtime> tor_rtcompat::UdpProvider for SniRuntime<R> {
+    type UdpSocket = <R as tor_rtcompat::UdpProvider>::UdpSocket;
 
-    fn udp_socket(&self) -> std::io::Result<Self::UdpSocket> {
-        self.inner.udp_socket()
+    async fn bind(&self, addr: &std::net::SocketAddr) -> std::io::Result<Self::UdpSocket> {
+        self.inner.bind(addr).await
     }
 }
 
@@ -118,20 +106,17 @@ impl<R: Runtime> futures::task::Spawn for SniRuntime<R> {
     }
 }
 
-impl<R: Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for SniRuntime<R> {
-    type Connector = SniConnector<<R as TlsProvider<<R as NetStreamProvider>::Stream>>::Connector>;
-    type Acceptor = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::Acceptor;
-    type TlsStream = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::TlsStream;
-    type TlsServerStream = <R as TlsProvider<<R as NetStreamProvider>::Stream>>::TlsServerStream;
+impl<R: Runtime> tor_rtcompat::TlsProvider<<R as tor_rtcompat::NetStreamProvider>::Stream> for SniRuntime<R> {
+    type Connector = <R as tor_rtcompat::TlsProvider<<R as tor_rtcompat::NetStreamProvider>::Stream>>::Connector;
+    type Acceptor = <R as tor_rtcompat::TlsProvider<<R as tor_rtcompat::NetStreamProvider>::Stream>>::Acceptor;
+    type TlsStream = <R as tor_rtcompat::TlsProvider<<R as tor_rtcompat::NetStreamProvider>::Stream>>::TlsStream;
+    type TlsServerStream = <R as tor_rtcompat::TlsProvider<<R as tor_rtcompat::NetStreamProvider>::Stream>>::TlsServerStream;
 
     fn tls_connector(&self) -> Self::Connector {
-        SniConnector {
-            inner: self.inner.tls_connector(),
-            sni_host: self.sni_host.clone(),
-        }
+        self.inner.tls_connector()
     }
 
-    fn tls_acceptor(&self, settings: TlsAcceptorSettings) -> std::io::Result<Self::Acceptor> {
+    fn tls_acceptor(&self, settings: tor_rtcompat::tls::TlsAcceptorSettings) -> std::io::Result<Self::Acceptor> {
         self.inner.tls_acceptor(settings)
     }
 
@@ -141,8 +126,10 @@ impl<R: Runtime> TlsProvider<<R as NetStreamProvider>::Stream> for SniRuntime<R>
 }
 
 // ===========================================================================
-// SniConnector — wraps the real connector, overrides SNI hostname
+// SniConnector — wraps a TlsConnector, overrides SNI hostname
 // ===========================================================================
+
+use tor_rtcompat::tls::TlsConnector;
 
 #[derive(Clone)]
 pub struct SniConnector<C> {
@@ -150,7 +137,6 @@ pub struct SniConnector<C> {
     sni_host: Arc<parking_lot::Mutex<String>>,
 }
 
-#[tor_rtcompat::async_trait]
 impl<S, C> TlsConnector<S> for SniConnector<C>
 where
     S: tor_rtcompat::StreamOps + Send + Unpin + 'static,

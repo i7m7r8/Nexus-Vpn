@@ -16,7 +16,6 @@ use jni::JNIEnv;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use std::io::Write;
 
 mod tun;
 mod stack;
@@ -75,8 +74,10 @@ impl log::Log for DualLogger {
         let mut buffer = LOG_BUFFER.write();
         buffer.push(line);
         // Keep only last 200 lines
-        if buffer.len() > 200 {
-            buffer.drain(..buffer.len() - 200);
+        let len = buffer.len();
+        if len > 200 {
+            let drain_end = len - 200;
+            buffer.drain(..drain_end);
         }
     }
 
@@ -200,7 +201,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 /// Returns a single string with lines separated by '\n'.
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogsNative<'a>(
-    mut env: JNIEnv<'a>,
+    env: JNIEnv<'a>,
     _class: jni::objects::JClass<'a>,
 ) -> jni::objects::JString<'a> {
     let buffer = LOG_BUFFER.read();
@@ -539,14 +540,14 @@ async fn vpn_main_loop(
                 let (to_app_tx, to_app_rx) = mpsc::channel::<Vec<u8>>(1);
 
                 // Retry DNS query up to 3 times on failure (network loss resilience)
-                let mut last_err = None;
+                let mut last_err_msg: Option<String> = None;
                 for attempt in 1..=3 {
                     match tor_clone.connect(("1.1.1.1", 53)).await {
                         Ok(mut dns_stream) => {
                             // Send query to DNS server through Tor
                             if let Err(e) = dns_stream.write_all(&query_clone).await {
                                 log::warn!("⚠️ DNS forward attempt {}: failed to send query #{}: {}", attempt, query_id, e);
-                                last_err = Some(e);
+                                last_err_msg = Some(e.to_string());
                                 continue;
                             }
 
@@ -560,26 +561,26 @@ async fn vpn_main_loop(
                                     resp_buf.truncate(n);
                                     log::debug!("🌐 DNS response #{} received ({} bytes, attempt {})", query_id, n, attempt);
                                     let _ = to_app_tx.send(resp_buf).await;
-                                    last_err = None;
+                                    last_err_msg = None;
                                     break;
                                 }
                                 Ok(Ok(0)) => {
                                     log::warn!("⚠️ DNS forward: empty response for query #{} (attempt {})", query_id, attempt);
-                                    last_err = Some(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "empty response"));
+                                    last_err_msg = Some("empty response".into());
                                 }
                                 Ok(Err(e)) => {
                                     log::warn!("⚠️ DNS forward: failed to read response #{} (attempt {}): {}", query_id, attempt, e);
-                                    last_err = Some(e);
+                                    last_err_msg = Some(e.to_string());
                                 }
                                 Err(_) => {
                                     log::warn!("⚠️ DNS forward: timeout reading response #{} (attempt {})", query_id, attempt);
-                                    last_err = Some(std::io::Error::new(std::io::ErrorKind::TimedOut, "read timeout"));
+                                    last_err_msg = Some("read timeout".into());
                                 }
                             }
                         }
                         Err(e) => {
                             log::warn!("⚠️ DNS forward: failed to connect to 1.1.1.1:53 for query #{} (attempt {}): {}", query_id, attempt, e);
-                            last_err = Some(e);
+                            last_err_msg = Some(e.to_string());
                         }
                     }
 
@@ -589,7 +590,7 @@ async fn vpn_main_loop(
                     }
                 }
 
-                if let Some(e) = last_err {
+                if let Some(e) = last_err_msg {
                     log::error!("❌ DNS forward: query #{} failed after 3 attempts: {}", query_id, e);
                 }
 
@@ -635,7 +636,7 @@ async fn vpn_main_loop(
         // === 2a. Detect newly established TCP sockets → move to inspecting ===
         let mut new_established = Vec::new();
         for (handle, socket) in stack.socket_set.iter_mut() {
-            if let Socket::Tcp(tcp_socket) = socket {
+            if let smoltcp::socket::Socket::Tcp(tcp_socket) = socket {
                 if tcp_socket.is_active()
                     && tcp_socket.state() == smoltcp::socket::tcp::State::Established
                     && !inspecting.contains(&handle)
