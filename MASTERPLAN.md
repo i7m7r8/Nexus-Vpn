@@ -372,6 +372,7 @@ On Android, use `VpnService.Builder.addAllowedApplication()` /
 - ✅ **Socket lifecycle** — proper cleanup on close, EOF, connection failure
 - ✅ **Bridge/pluggable transport config** — obfs4/snowflake/meek via custom bridge lines
 - ✅ **Kill switch** — `setBlocking(true)` on Android Q+ prevents leaks when VPN drops
+- ✅ **Relay-level SNI spoofing** — TLS to guard relays uses decoy SNI (like Invisible Pro)
 
 ## What's Still Incomplete
 

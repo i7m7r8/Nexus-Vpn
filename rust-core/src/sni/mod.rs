@@ -4,6 +4,7 @@ pub mod parser;
 pub mod rewriter;
 
 pub use transport::SniRuntime;
+pub use transport::SniConnector;
 pub use parser::TlsParser;
 pub use rewriter::SniRewriter;
 pub use error::SniError;
