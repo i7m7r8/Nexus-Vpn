@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Tor / Arti
-arti-client       = { version = "0.40.0", default-features = false, features = ["tokio", "rustls", "compression", "bridge-client", "pt-client", "hs-client", "anyhow"] }
+arti-client       = { version = "0.40.0", default-features = false, features = ["tokio", "rustls", "compression", "bridge-client", "pt-client", "onion-service-client", "anyhow"] }
 tor-rtcompat      = { version = "0.40.0", default-features = false, features = ["tokio", "rustls"] }
 
 # Networking
