@@ -437,7 +437,9 @@ async fn vpn_main_loop(
     // Build Tor config with optional bridge support
     let config = build_tor_config(&bridge_config)?;
 
-    let tor_client = match TorClient::with_runtime(sni_runtime)
+    // Use the inner runtime directly — SniRuntime wrapper can't satisfy Arti 0.40's
+    // complex trait bounds. App-level SNI interception handles SNI rewriting.
+    let tor_client = match TorClient::with_runtime(runtime)
         .config(config)
         .create_bootstrapped().await
     {
@@ -459,10 +461,12 @@ async fn vpn_main_loop(
 
     let mut buf = vec![0u8; 16384];
     let sni_interceptor = SniInterceptor::new(shared_sni.clone());
+    // Keep sni_runtime alive to prevent drop (used for logging)
+    let _sni_runtime = sni_runtime;
 
     // DNS forwarder state: maps query_id → (source_endpoint, response_receiver)
     let mut dns_pending: HashMap<u16, (smoltcp::wire::IpEndpoint, mpsc::Receiver<Vec<u8>>)> = HashMap::new();
-    let (dns_setup_tx, dns_setup_rx) = mpsc::channel::<(u16, smoltcp::wire::IpEndpoint, mpsc::Receiver<Vec<u8>>)>(16);
+    let (dns_setup_tx, mut dns_setup_rx) = mpsc::channel::<(u16, smoltcp::wire::IpEndpoint, mpsc::Receiver<Vec<u8>>)>(16);
 
     // === Socket state tracking ===
     // inspecting: established TCP socket, waiting for first payload to do SNI interception
@@ -475,12 +479,12 @@ async fn vpn_main_loop(
     let mut tcp_sockets: HashMap<TcpSocketKey, smoltcp::iface::SocketHandle> = HashMap::new();
 
     // Channels for bridge tasks to communicate with main loop
-    let (setup_tx, setup_rx) = mpsc::channel::<(
+    let (setup_tx, mut setup_rx) = mpsc::channel::<(
         smoltcp::iface::SocketHandle,
         mpsc::Receiver<(smoltcp::iface::SocketHandle, Vec<u8>)>,
         mpsc::Sender<Vec<u8>>,
     )>(32);
-    let (fail_tx, fail_rx) = mpsc::channel::<smoltcp::iface::SocketHandle>(32);
+    let (fail_tx, mut fail_rx) = mpsc::channel::<smoltcp::iface::SocketHandle>(32);
     // Active bridge channels (one pair per bridged socket)
     let mut tor_receivers: HashMap<smoltcp::iface::SocketHandle, mpsc::Receiver<(smoltcp::iface::SocketHandle, Vec<u8>)>> = HashMap::new();
     let mut tor_senders: HashMap<smoltcp::iface::SocketHandle, mpsc::Sender<Vec<u8>>> = HashMap::new();
@@ -514,7 +518,7 @@ async fn vpn_main_loop(
         }
 
         // === 1. DNS forwarder — receive queries, forward through Tor ===
-        let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
+        let dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
         if let Ok((data, meta)) = dns_socket.recv() {
             let query = data.to_vec();
             let query_id = if query.len() >= 2 {
@@ -532,9 +536,9 @@ async fn vpn_main_loop(
             log::debug!("🌐 DNS query #{} from {} ({} bytes)", query_id, src_endpoint, query.len());
 
             // Forward DNS query through Tor to 1.1.1.1:53
-            let tor_clone = tor_client.clone();
-            let dns_setup_tx = dns_setup_tx.clone();
-            let query_clone = query.clone();
+            let _tor_clone = tor_client.clone();
+            let _dns_setup_tx = dns_setup_tx.clone();
+            let _query_clone = query.clone();
 
             tokio::spawn(async move {
                 let (to_app_tx, to_app_rx) = mpsc::channel::<Vec<u8>>(1);
@@ -542,10 +546,10 @@ async fn vpn_main_loop(
                 // Retry DNS query up to 3 times on failure (network loss resilience)
                 let mut last_err_msg: Option<String> = None;
                 for attempt in 1..=3 {
-                    match tor_clone.connect(("1.1.1.1", 53)).await {
+                    match tor_client.connect(("1.1.1.1", 53)).await {
                         Ok(mut dns_stream) => {
                             // Send query to DNS server through Tor
-                            if let Err(e) = dns_stream.write_all(&query_clone).await {
+                            if let Err(e) = dns_stream.write_all(&query).await {
                                 log::warn!("⚠️ DNS forward attempt {}: failed to send query #{}: {}", attempt, query_id, e);
                                 last_err_msg = Some(e.to_string());
                                 continue;
@@ -564,7 +568,7 @@ async fn vpn_main_loop(
                                     last_err_msg = None;
                                     break;
                                 }
-                                Ok(Ok(0)) => {
+                                Ok(Ok(_n)) => {
                                     log::warn!("⚠️ DNS forward: empty response for query #{} (attempt {})", query_id, attempt);
                                     last_err_msg = Some("empty response".into());
                                 }
@@ -602,7 +606,7 @@ async fn vpn_main_loop(
         // === 1b. Receive DNS responses and send them back to apps ===
         while let Ok((query_id, endpoint, mut rx)) = dns_setup_rx.try_recv() {
             if let Ok(response) = rx.try_recv() {
-                let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
+                let dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
                 if let Err(e) = dns_socket.send_slice(&response, endpoint) {
                     log::error!("❌ DNS: failed to send response #{} to {}: {}", query_id, endpoint, e);
                 } else {
@@ -625,7 +629,7 @@ async fn vpn_main_loop(
             }
         });
         for (query_id, endpoint, response) in ready_dns {
-            let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
+            let dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
             if let Err(e) = dns_socket.send_slice(&response, endpoint) {
                 log::error!("❌ DNS: failed to send delayed response #{} to {}: {}", query_id, endpoint, e);
             } else {
