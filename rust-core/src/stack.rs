@@ -10,8 +10,8 @@ pub struct VirtualDevice {
 }
 
 impl Device for VirtualDevice {
-    type RxToken<'a> = RxToken;
-    type TxToken<'a> = TxToken<'a>;
+    type RxToken<'a> = RxToken where Self: 'a;
+    type TxToken<'a> = TxToken<'a> where Self: 'a;
 
     fn receive(&mut self, _timestamp: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         self.rx_queue.pop_front().map(|buffer| {
@@ -36,11 +36,11 @@ pub struct RxToken {
 }
 
 impl smoltcp::phy::RxToken for RxToken {
-    fn consume<R, F>(mut self, f: F) -> R
+    fn consume<R, F>(self, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> R,
+        F: FnOnce(&[u8]) -> R,
     {
-        f(&mut self.buffer)
+        f(&self.buffer)
     }
 }
 

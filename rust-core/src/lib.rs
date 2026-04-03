@@ -112,7 +112,7 @@ use arti_client::{TorClient, TorClientConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 struct Bridge {
-    handle: smoltcp::iface::SocketHandle,
+    _handle: smoltcp::iface::SocketHandle,
 }
 
 impl Bridge {
@@ -194,11 +194,9 @@ async fn vpn_main_loop(tun_fd: jint, sni_host: String) -> anyhow::Result<()> {
         // 1. Process DNS queries
         let mut dns_socket = stack.socket_set.get_mut::<UdpSocket>(dns_handle);
         if let Ok((data, endpoint)) = dns_socket.recv() {
-            let tor_clone = tor_client.clone();
             let _query_data = data.to_vec();
             tokio::spawn(async move {
                 log::debug!("🌐 Intercepted DNS query from {}", endpoint);
-                // Placeholder for real DNS resolution logic
             });
         }
         drop(dns_socket);
