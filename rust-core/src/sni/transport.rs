@@ -2,10 +2,11 @@ use async_trait::async_trait;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use futures_io::{AsyncRead, AsyncWrite};
-use tor_rtcompat::{NetStreamProvider, NetStreamListener, StreamOps, SleepProvider, SpawnProvider, TlsProvider};
+use tor_rtcompat::{NetStreamProvider, NetStreamListener, StreamOps, SleepProvider, TlsProvider};
 use std::task::{Context, Poll};
 use futures::stream::Stream;
 use std::time::Duration;
+use std::marker::PhantomData;
 
 #[derive(Clone)]
 pub struct SniRuntime<R: tor_rtcompat::Runtime> {
@@ -19,12 +20,6 @@ impl<R: tor_rtcompat::Runtime> SniRuntime<R> {
     }
 }
 
-impl<R: tor_rtcompat::Runtime> SpawnProvider for SniRuntime<R> {
-    fn spawn_obj(&self, future: futures::future::FutureObj<'static, ()>) -> Result<(), futures::task::SpawnError> {
-        self.inner.spawn_obj(future)
-    }
-}
-
 impl<R: tor_rtcompat::Runtime> SleepProvider for SniRuntime<R> {
     type SleepFuture = R::SleepFuture;
     fn sleep(&self, duration: Duration) -> Self::SleepFuture {
@@ -33,9 +28,9 @@ impl<R: tor_rtcompat::Runtime> SleepProvider for SniRuntime<R> {
 }
 
 #[async_trait]
-impl<R: tor_rtcompat::Runtime> NetStreamProvider<SocketAddr> for SniRuntime<R> {
-    type Stream = WrappedStream<R::Stream>;
-    type Listener = WrappedListener<R::Listener, R::Stream>;
+impl<R: tor_rtcompat::Runtime> NetStreamProvider for SniRuntime<R> {
+    type Stream = WrappedStream<<R as NetStreamProvider>::Stream>;
+    type Listener = WrappedListener<<R as NetStreamProvider>::Listener, <R as NetStreamProvider>::Stream>;
 
     async fn connect(&self, addr: &SocketAddr) -> std::io::Result<Self::Stream> {
         let stream = self.inner.connect(addr).await?;
@@ -45,15 +40,26 @@ impl<R: tor_rtcompat::Runtime> NetStreamProvider<SocketAddr> for SniRuntime<R> {
 
     async fn listen(&self, addr: &SocketAddr) -> std::io::Result<Self::Listener> {
         let listener = self.inner.listen(addr).await?;
-        Ok(WrappedListener { inner: listener, _phantom: std::marker::PhantomData })
+        Ok(WrappedListener { inner: listener, _phantom: PhantomData })
     }
 }
 
-impl<R: tor_rtcompat::Runtime> TlsProvider<WrappedStream<R::Stream>> for SniRuntime<R> {
-    type Connector = R::TlsConnector;
-    type TlsStream = R::TlsStream;
+impl<R: tor_rtcompat::Runtime> TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>> for SniRuntime<R> {
+    type Connector = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::Connector;
+    type Acceptor = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::Acceptor;
+    type TlsStream = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::TlsStream;
+    type TlsServerStream = <R as TlsProvider<WrappedStream<<R as NetStreamProvider>::Stream>>>::TlsServerStream;
+
     fn tls_connector(&self) -> Self::Connector {
         self.inner.tls_connector()
+    }
+
+    fn tls_acceptor(&self) -> Self::Acceptor {
+        self.inner.tls_acceptor()
+    }
+
+    fn supports_keying_material_export(&self) -> bool {
+        self.inner.supports_keying_material_export()
     }
 }
 
