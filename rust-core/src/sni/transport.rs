@@ -40,7 +40,14 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for WrappedStream<S> {
     }
 }
 
-impl<S: StreamOps> StreamOps for WrappedStream<S> {}
+impl<S: StreamOps + Send + Unpin + 'static> StreamOps for WrappedStream<S> {
+    fn set_tcp_notsent_lowat(&self, notsent_lowat: u32) -> std::io::Result<()> {
+        self.inner.set_tcp_notsent_lowat(notsent_lowat)
+    }
+    fn new_handle(&self) -> Box<dyn StreamOps + Send + Unpin> {
+        self.inner.new_handle()
+    }
+}
 
 pub struct WrappedListener<L, S> {
     inner: L,
@@ -71,7 +78,7 @@ pub struct WrappedIncoming<I, S> {
     _phantom: std::marker::PhantomData<S>,
 }
 
-impl<I: Stream<Item = std::io::Result<(S, SocketAddr)>> + Unpin, S> Stream for WrappedIncoming<I, S> {
+impl<I: Stream<Item = std::io::Result<(S, SocketAddr)>> + Unpin, S: AsyncRead + AsyncWrite + StreamOps + Send + Sync + Unpin + 'static> Stream for WrappedIncoming<I, S> {
     type Item = std::io::Result<(WrappedStream<S>, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
