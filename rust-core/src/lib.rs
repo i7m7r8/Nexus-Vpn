@@ -139,7 +139,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogBufferNative(
+pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogBufferNativeInternal(
     env: JNIEnv,
     _class: JClass,
 ) -> jobject {

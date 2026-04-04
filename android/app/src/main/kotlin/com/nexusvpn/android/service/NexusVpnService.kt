@@ -29,15 +29,24 @@ class NexusVpnService : VpnService() {
         const val NOTIF_ID = 1
         const val CHAN_ID = "nexus_vpn_channel"
 
-        init {
-            System.loadLibrary("nexus_vpn")
-        }
+        // Store instance for static log access
+        @Volatile private var instance: NexusVpnService? = null
 
-        external fun initVpnNative(tunFd: Int, sniHostname: String, bridgeConfig: String): Boolean
-        external fun stopVpnNative()
-        external fun setSniHostnameNative(hostname: String): Boolean
-        external fun getLogBufferNative(): String
+        fun getLogBufferNative(): String {
+            return instance?.getLogBufferNativeInternal() ?: ""
+        }
     }
+
+    init {
+        System.loadLibrary("nexus_vpn")
+        instance = this
+    }
+
+    // Native methods at CLASS level (not companion) — matches Rust JNI names
+    private external fun initVpnNative(tunFd: Int, sniHostname: String, bridgeConfig: String): Boolean
+    private external fun stopVpnNative()
+    private external fun setSniHostnameNative(hostname: String): Boolean
+    private external fun getLogBufferNativeInternal(): String
 
     private var tunFd: ParcelFileDescriptor? = null
     private var torProcess: Process? = null
@@ -166,6 +175,8 @@ class NexusVpnService : VpnService() {
         val assetPath = "tor/$archDir"
 
         torDir.mkdirs()
+        // Clear old files to avoid stale binaries
+        torDir.listFiles()?.forEach { it.deleteRecursively() }
 
         // Recursively copy entire asset tree to torDir (preserves nested dirs)
         try {
@@ -182,8 +193,17 @@ class NexusVpnService : VpnService() {
             Log.e(TAG, "Tor binary not found in $torDir — contents: ${torDir.listFiles()?.map { it.name }?.joinToString(", ")}")
             return null
         }
-        torBinary.setExecutable(true)
-        Log.i(TAG, "✅ Found Tor binary: ${torBinary.absolutePath}")
+
+        // Make executable using chmod (setExecutable doesn't work on Android 10+)
+        try {
+            Runtime.getRuntime().exec(arrayOf("chmod", "755", torBinary.absolutePath)).waitFor()
+            Log.i(TAG, "✅ chmod 755 on Tor binary")
+        } catch (e: Exception) {
+            Log.w(TAG, "chmod failed, trying setExecutable", e)
+            torBinary.setExecutable(true, false)
+        }
+
+        Log.i(TAG, "✅ Found Tor binary: ${torBinary.absolutePath} (size: ${torBinary.length()})")
         return torBinary
     }
 
@@ -383,6 +403,7 @@ class NexusVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        instance = null
         disconnect()
         super.onDestroy()
     }
