@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Guardian Project Maven Repository (official) - for tor-android
+        maven { url = uri("https://guardianproject.github.io/gpmaven") }
     }
 }
 

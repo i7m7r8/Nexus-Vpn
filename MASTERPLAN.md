@@ -1,391 +1,840 @@
-# Nexus VPN — Masterplan: SNI → Tor Pipeline
+# Nexus VPN — Master Plan
 
-> **Goal**: Like Invisible Pro — user configures a decoy SNI hostname. All TLS traffic
-> exiting the device carries that decoy SNI in its ClientHello. The *real* destination
-> hostname is recovered from the original ClientHello, then the connection is forwarded
-> through the Tor network via Arti.
+> **World's Most Secure, Powerful, Ultra Feature-Packed SNI + Tor VPN**  
+> **Pure Rust Core • Modern Compose UI • GitHub Auto-Release**
 
 ---
 
-## Architecture Overview
+## 📋 Table of Contents
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Android App (Kotlin)                                           │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
-│  │ VpnService  │──│ TUN fd (JNI) │──│ Rust Core (lib.rs)     │ │
-│  │ Builder     │  │ 10.8.0.2/24  │  │                        │ │
-│  └─────────────┘  └──────────────┘  │  ┌──────────────────┐  │ │
-│                                      │  │ smoltcp stack    │  │ │
-│  User sets:                          │  │ (VirtualDevice)  │  │ │
-│  • decoy SNI host                    │  └────────┬─────────┘  │ │
-│  • (optional) Tor bridges            │           │             │ │
-│                                      │  ┌────────▼─────────┐  │ │
-│                                      │  │ SNI Interceptor  │  │ │
-│                                      │  │ 1. Parse TLS CH  │  │ │
-│                                      │  │ 2. Extract real  │  │ │
-│                                      │  │    hostname      │  │ │
-│                                      │  │ 3. Rewrite SNI → │ │ │
-│                                      │  │    decoy in pkt  │  │ │
-│                                      │  └───┬──────────┬───┘  │ │
-│                                      │      │          │       │ │
-│                                      │  ┌───▼──┐  ┌───▼────┐  │ │
-│                                      │  │Reply │  │Bridge  │  │ │
-│                                      │  │to app│  │to Tor  │  │ │
-│                                      │  └──────┘  │(Arti)  │  │ │
-│                                      │            └────────┘  │ │
-│                                      └────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-```
+1. [Vision & Goals](#vision--goals)
+2. [Architecture Overview](#architecture-overview)
+3. [Core Features](#core-features)
+4. [Security Features](#security-features)
+5. [Network Features](#network-features)
+6. [UI/UX Features](#uiux-features)
+7. [Advanced Features](#advanced-features)
+8. [Android Permissions & Services](#android-permissions--services)
+9. [Build & CI/CD](#build--cicd)
+10. [Project Structure](#project-structure)
+11. [Implementation Phases](#implementation-phases)
+12. [Technical Stack](#technical-stack)
 
 ---
 
-## Phase 1 — Fix the Data Bridge (CRITICAL)
+## 🎯 Vision & Goals
 
-### Problem
-`Bridge::copy` in `lib.rs` is one-directional, discards all data, and sockets
-are re-bridged every ~2ms poll cycle creating infinite duplicate Tor connections.
+### Vision
+Create the **world's most powerful SNI + Tor VPN** that combines:
+- **SNI Spoofing** (like Invisible Pro) — Decoy SNI in TLS ClientHello
+- **Tor Anonymity** — All traffic routed through Tor network
+- **Zero Leaks** — Kill switch, DNS leak protection, IPv6 leak protection
+- **Pure Rust Core** — Memory-safe, high-performance networking
+- **Modern UI** — Elegant Proton VPN clone with Jetpack Compose
 
-### Solution
-
-**1a. Make `Bridge::copy` truly bidirectional**
-
-```rust
-struct Bridge {
-    handle: smoltcp::iface::SocketHandle,
-}
-
-impl Bridge {
-    async fn copy(
-        handle: smoltcp::iface::SocketHandle,
-        mut tor_stream: arti_client::DataStream,
-        mut iface: smoltcp::iface::Interface,
-        mut device: VirtualDevice,
-        sockets: &mut smoltcp::iface::SocketSet,
-    ) {
-        let mut tor_buf = vec![0u8; 8192];
-        let mut smoltcp_buf = vec![0u8; 8192];
-
-        loop {
-            tokio::select! {
-                // Tor → smoltcp
-                res = tor_stream.read(&mut tor_buf) => {
-                    match res {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            // Write data back to smoltcp socket
-                            let socket = sockets.get_mut::<TcpSocket>(handle);
-                            if socket.can_send() {
-                                let _ = socket.send_slice(&tor_buf[..n]);
-                            }
-                        }
-                        Err(e) => { break; }
-                    }
-                }
-                // smoltcp → Tor
-                _ = tokio::time::sleep(Duration::from_millis(1)) => {
-                    let socket = sockets.get_mut::<TcpSocket>(handle);
-                    if socket.can_recv() {
-                        let n = socket.recv_slice(&mut smoltcp_buf).unwrap_or(0);
-                        if n > 0 {
-                            let _ = tor_stream.write_all(&smoltcp_buf[..n]).await;
-                        }
-                    }
-                    if socket.state() == TcpState::CloseWait || socket.state() == TcpState::Closed {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
-```
-
-**1b. Deduplicate socket bridging**
-
-```rust
-// In vpn_main_loop, before the main loop:
-let mut bridged: HashSet<smoltcp::iface::SocketHandle> = HashSet::new();
-
-// Inside the poll loop:
-for (handle, socket) in stack.socket_set.iter_mut() {
-    if let Socket::Tcp(tcp_socket) = socket {
-        if tcp_socket.is_active()
-            && tcp_socket.state() == smoltcp::socket::tcp::State::Established
-            && !bridged.contains(&handle)
-        {
-            bridged.insert(handle);
-            // spawn bridge ONCE per socket
-        }
-    }
-}
-```
+### Goals
+- ✅ **Privacy First** — No logs, no tracking, no analytics
+- ✅ **Maximum Security** — Rust memory safety + Tor encryption
+- ✅ **SNI Customization** — User-configurable decoy SNI hostnames
+- ✅ **Bridge Support** — obfs4, meek, snowflake for censorship circumvention
+- ✅ **Auto Build** — GitHub Actions builds & releases on every push
+- ✅ **Lightweight** — Optimized for low-end devices (2GB RAM)
+- ✅ **Open Source** — Fully transparent, community-driven
 
 ---
 
-## Phase 2 — Wire Up SNI Parser & Rewriter (CRITICAL)
-
-### Problem
-`parser.rs` and `rewriter.rs` exist but are not declared in `sni/mod.rs`.
-They are dead code — never compiled, never called.
-
-### Solution
-
-**2a. Add modules to `sni/mod.rs`**
-
-```rust
-mod transport;
-pub mod parser;
-pub mod rewriter;
-
-pub use transport::SniRuntime;
-pub use parser::TlsParser;
-pub use rewriter::SniRewriter;
-```
-
-**2b. Add bounds-checking to parser** (prevent OOB reads on malformed packets)
-
-Every variable-length field read must check `offset + len <= buf.len()` before
-advancing the cursor.
-
-**2c. Make rewriter handle "no SNI" case**
-
-Currently `rewrite_sni()` returns `NoSniFound` if the ClientHello lacks an SNI
-extension. It must be able to **inject** a new SNI extension block into the
-extensions list, adjusting all length fields accordingly.
-
----
-
-## Phase 3 — The SNI Interceptor Layer (THE CORE FEATURE)
-
-### Problem
-There is no code that inspects packet payloads, identifies TLS ClientHello
-records, extracts the real hostname, rewrites the SNI, and routes correctly.
-
-### Solution — Insert a `SniInterceptor` between smoltcp and the Tor bridge
+## 🏗️ Architecture Overview
 
 ```
-smoltcp TCP socket established
-        │
-        ▼
-┌──────────────────────────┐
-│   SniInterceptor         │
-│                          │
-│  1. Read TCP payload     │
-│     (first bytes = TLS)  │
-│                          │
-│  2. Is it TLS ClientHello?
-│     - content_type == 0x16
-│     - handshake_type == 0x01
-│                          │
-│  3. TlsParser::parse_sni()
-│     → extract real hostname│
-│                          │
-│  4. SniRewriter::rewrite_sni()
-│     → replace with decoy  │
-│                          │
-│  5. Write modified packet │
-│     back to smoltcp       │
-│                          │
-│  6. Store real hostname   │
-│     for Tor connection    │
-└────────┬─────────────────┘
-         │
-    real hostname → Tor connect
-    modified pkt  → app receives decoy SNI
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Android App (Kotlin + Jetpack Compose)                                  │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  UI Layer (Compose)                                              │   │
+│  │  ┌─────────────┐ ┌──────────────┐ ┌──────────────────────────┐  │   │
+│  │  │ Home Screen │ │ Settings     │ │ Connection Status        │  │   │
+│  │  │ Connect Btn │ │ SNI Config   │ │ Speed Monitor            │  │   │
+│  │  │ Quick Stats │ │ Bridge Config│ │ Relay Info               │  │   │
+│  │  └─────────────┘ └──────────────┘ └──────────────────────────┘  │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  VPN Service Layer                                               │   │
+│  │  ┌──────────────────┐  ┌───────────────────────────────────┐    │   │
+│  │  │ VpnService.Builder│  │ Foreground Service (Persistent)   │    │   │
+│  │  │ • TUN Interface   │  │ • Notification                    │    │   │
+│  │  │ • Routes          │  │ • Auto-restart                    │    │   │
+│  │  │ • DNS             │  │ • Boot receiver                   │    │   │
+│  │  └────────┬─────────┘  └───────────────────────────────────┘    │   │
+│  └───────────┼──────────────────────────────────────────────────────┘   │
+│              │                                                           │
+│  ┌───────────▼──────────────────────────────────────────────────────┐   │
+│  │  JNI Bridge (libnexus_vpn.so)                                    │   │
+│  │  • init_vpn(tun_fd, config)                                      │   │
+│  │  • stop_vpn()                                                    │   │
+│  │  • update_sni(decoy_host)                                        │   │   │
+│  └───────────┬──────────────────────────────────────────────────────┘   │
+└──────────────┼──────────────────────────────────────────────────────────┘
+               │
+┌──────────────▼──────────────────────────────────────────────────────────┐
+│  Rust Core (nexus-vpn)                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  TUN Reader Thread                                              │   │
+│  │  • Read raw IP packets from TUN fd                              │   │
+│  │  • Feed to smoltcp virtual stack                                │   │
+│  └──────────┬──────────────────────────────────────────────────────┘   │
+│             │                                                           │
+│  ┌──────────▼──────────────────────────────────────────────────────┐   │
+│  │  smoltcp Virtual Stack (10.8.0.2/24)                            │   │
+│  │  • TCP Socket Management                                        │   │
+│  │  • UDP Socket (DNS)                                             │   │
+│  │  • IP Fragment Reassembly                                       │   │
+│  └──────────┬──────────────────────────────────────────────────────┘   │
+│             │                                                           │
+│  ┌──────────▼──────────────────────────────────────────────────────┐   │
+│  │  SNI Interceptor (THE CORE FEATURE)                             │   │
+│  │  ┌──────────────────────────────────────────────────────────┐  │   │
+│  │  │ 1. Detect TLS ClientHello (content_type=0x16, HS=0x01)  │  │   │
+│  │  │ 2. Parse SNI extension → Extract real hostname           │  │   │
+│  │  │ 3. Rewrite SNI → User-configured decoy host             │  │   │
+│  │  │ 4. Store real hostname for Tor routing                  │  │   │
+│  │  │ 5. Modified packet → App sees decoy SNI                 │  │   │
+│  │  └──────────────────────────────────────────────────────────┘  │   │
+│  └──────────┬──────────────────────────────────────────────────────┘   │
+│             │                                                           │
+│  ┌──────────▼──────────────────────────────────────────────────────┐   │
+│  │  DNS Forwarder                                                  │   │
+│  │  • Intercept DNS queries (UDP 53)                               │   │
+│  │  • Forward through Tor to 1.1.1.1 / 9.9.9.9                    │   │
+│  │  • Return responses to app                                      │   │
+│  └──────────┬──────────────────────────────────────────────────────┘   │
+│             │                                                           │
+│  ┌──────────▼──────────────────────────────────────────────────────┐   │
+│  │  Tor Connector (Arti Client)                                    │   │
+│  │  ┌──────────────────────────────────────────────────────────┐  │   │
+│  │  │ • Bootstrap to Tor network                               │  │   │
+│  │  │ • Connect to real hostname (from SNI interceptor)        │  │   │
+│  │  │ • Bridge support (obfs4/meek/snowflake)                  │  │   │
+│  │  │ • Circuit management                                     │  │   │
+│  │  │ • Stream isolation                                       │  │   │
+│  │  └──────────────────────────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Implementation:**
+### Data Flow
 
-```rust
-// In lib.rs — new struct
-struct SniInterceptor {
-    decoy_host: String,
-    real_hosts: Arc<Mutex<HashMap<smoltcp::iface::SocketHandle, String>>>,
-}
-
-impl SniInterceptor {
-    /// Inspect TCP payload, rewrite SNI if TLS ClientHello, return modified payload
-    fn intercept(
-        &self,
-        handle: smoltcp::iface::SocketHandle,
-        payload: &mut Vec<u8>,
-    ) -> Option<String> {
-        // Check if this is a TLS ClientHello
-        if payload.len() < 5 { return None; }
-        if payload[0] != 0x16 { return None; } // Handshake
-        if payload[5] != 0x01 { return None; } // ClientHello
-
-        // Parse original SNI
-        let real_host = TlsParser::parse_sni(payload).ok()?;
-
-        // Rewrite SNI to decoy
-        if SniRewriter::rewrite_sni(payload, &self.decoy_host).is_ok() {
-            self.real_hosts.lock().unwrap().insert(handle, real_host.clone());
-            return Some(real_host);
-        }
-        None
-    }
-}
 ```
-
-**Integration into main loop:**
-
-```rust
-// When detecting established TCP sockets:
-for (handle, socket) in stack.socket_set.iter_mut() {
-    if let Socket::Tcp(tcp_socket) = socket {
-        if tcp_socket.can_recv() && !bridged.contains(&handle) {
-            // Peek at incoming payload
-            let mut payload_buf = vec![0u8; 16384];
-            let n = tcp_socket.recv_slice(&mut payload_buf).unwrap_or(0);
-            if n > 0 {
-                payload_buf.truncate(n);
-
-                // Try SNI interception
-                if let Some(real_host) = interceptor.intercept(handle, &mut payload_buf) {
-                    // Write modified packet (with decoy SNI) back to socket
-                    // so the app sees the rewritten ClientHello
-                    let _ = tcp_socket.send_slice(&payload_buf);
-
-                    // Store real_host for Tor connection
-                    // Bridge will use real_host instead of IP address
-                }
-            }
-        }
-    }
-}
+App Request
+    ↓
+TUN Interface (10.8.0.2/24)
+    ↓
+smoltcp Virtual Stack
+    ↓
+SNI Interceptor
+    ├─ Parse TLS ClientHello
+    ├─ Extract real hostname (e.g., secret-site.onion)
+    ├─ Rewrite SNI → decoy.example.com
+    └─ Store mapping: socket → real_host
+    ↓
+Tor Connection
+    ├─ Connect to real_host:port through Tor
+    └─ Stream data bidirectionally
+    ↓
+Tor Network → Exit Node → Destination
 ```
 
 ---
 
-## Phase 4 — Hostname-Aware Tor Connections
+## 🔥 Core Features
 
-### Problem
-Currently `endpoint.addr.to_string()` gives an IP like `93.184.216.34`.
-The original hostname is lost, breaking virtual hosting on the server side.
+### 1. SNI Spoofing (Invisible Pro Style)
+- **What**: User configures a decoy SNI hostname
+- **How**: All TLS ClientHello packets have their SNI field rewritten to the decoy
+- **Why**: Network observers see only the decoy hostname, not the real destination
+- **Customization**: 
+  - Preset decoy hosts (cloudflare.com, google.com, etc.)
+  - Custom user-defined decoy hosts
+  - Per-profile SNI settings
 
-### Solution
-Use the hostname extracted by the SNI interceptor:
+### 2. Tor Integration
+- **Pure Rust**: Using `arti-client` (official Tor implementation in Rust)
+- **Full Tor Support**: Complete Tor protocol support
+- **Circuit Management**: Automatic circuit rotation
+- **Stream Isolation**: Separate circuits for different connections
 
-```rust
-// After SNI interception, real_host is stored in interceptor.real_hosts
-let real_host = interceptor.real_hosts.lock().unwrap()
-    .remove(&handle)
-    .unwrap_or_else(|| endpoint.addr.to_string()); // fallback to IP
+### 3. Bridge/Pluggable Transports
+- **obfs4**: Obfuscation protocol 4
+- **meek**: Domain fronting via CDNs
+- **snowflake**: WebRTC-based bridges
+- **Custom bridges**: User-provided bridge addresses
 
-tor_clone.connect((real_host, target_port)).await
-```
+### 4. Kill Switch
+- **System-level**: Android VpnService blocking
+- **DNS Leak Protection**: All DNS through Tor
+- **IPv6 Leak Protection**: IPv6 disabled in TUN
+- **Auto-reconnect**: Service restarts on failure
 
----
-
-## Phase 5 — DNS Interceptor (MAJOR)
-
-### Problem
-DNS queries are intercepted and discarded. No resolution, no response.
-
-### Solution
-Implement a simple DNS forwarder via Tor:
-
-```rust
-// In main loop, when DNS query arrives:
-if let Ok((data, endpoint)) = dns_socket.recv() {
-    let query = data.to_vec();
-
-    // Parse DNS query, extract domain
-    // Forward DNS resolution through Tor
-    // Send DNS response back to app via UDP socket
-}
-```
-
-Alternative (simpler): Let the app resolve DNS normally, intercept the
-resulting TCP connections by IP. The SNI interceptor recovers the hostname
-from the TLS ClientHello anyway. **DNS interception can be deferred.**
+### 5. DNS Over Tor
+- **No Leaks**: All DNS queries through Tor
+- **Resolvers**: Configurable (1.1.1.1, 9.9.9.9, custom)
+- **DNSSEC**: Optional DNSSEC validation
 
 ---
 
-## Phase 6 — Bridge/Pluggable Transport Support (MINOR)
+## 🛡️ Security Features
 
-### Problem
-UI has bridge configuration (obfs4/meek/snowflake) but `TorClientConfig::default()`
-ignores it.
+### Memory Safety
+- ✅ **100% Rust Core**: No C/C++ memory vulnerabilities
+- ✅ **Bounds Checking**: All packet parsing validated
+- ✅ **Zero Unsafe**: Minimal unsafe blocks (JNI only)
 
-### Solution
-Pass bridge config from Android prefs → JNI → Rust → `TorClientConfig`:
+### Network Security
+- ✅ **Tor Encryption**: Multi-layer Tor encryption
+- ✅ **SNI Spoofing**: Decoy SNI in TLS handshakes
+- ✅ **DNS Over Tor**: No DNS leaks
+- ✅ **Kill Switch**: Blocks all traffic if VPN drops
+- ✅ **No Logs**: Zero logging of user activity
+- ✅ **No Analytics**: No tracking, no telemetry
 
+### App Security
+- ✅ **Foreground Service**: Persistent notification prevents Android killing
+- ✅ **Boot Protection**: Auto-start on device boot
+- ✅ **Reconnection**: Automatic reconnection on network changes
+- ✅ **Certificate Pinning**: For Tor bootstrap (optional)
+
+---
+
+## 🌐 Network Features
+
+### TUN Interface
+- ✅ **Virtual Network**: 10.8.0.2/24 subnet
+- ✅ **MTU Control**: Configurable MTU (default 1500)
+- ✅ **Routing**: All traffic routed through TUN
+- ✅ **Split Tunneling**: Per-app routing (future)
+
+### Protocol Support
+- ✅ **IPv4**: Full IPv4 support
+- ✅ **TCP**: Full TCP support via smoltcp
+- ✅ **UDP**: DNS over UDP (future: full UDP)
+- ⚠️ **IPv6**: Planned (currently disabled)
+
+### Performance
+- ✅ **Async I/O**: Tokio-based async networking
+- ✅ **Zero-copy**: Minimal data copying
+- ✅ **Buffer Pooling**: Reusable buffers
+- ✅ **Low RAM**: Optimized for 2GB devices
+
+---
+
+## 🎨 UI/UX Features
+
+### Design Philosophy
+- **Proton VPN Clone**: Modern, clean, intuitive
+- **Material You**: Dynamic theming from wallpaper
+- **Dark Mode**: AMOLED-friendly dark theme
+- **Animations**: Smooth transitions & micro-interactions
+
+### Screens
+
+#### 1. Home Screen
+```
+┌────────────────────────────────────┐
+│  ≡  Nexus VPN              ⚙️     │
+├────────────────────────────────────┤
+│                                    │
+│         🔒                         │
+│     DISCONNECTED                   │
+│                                    │
+│   ┌──────────────────────────┐    │
+│   │                          │    │
+│   │      CONNECT             │    │
+│   │      [=====]             │    │
+│   │                          │    │
+│   └──────────────────────────┘    │
+│                                    │
+│  Quick Stats:                      │
+│  ┌──────────┐  ┌──────────┐      │
+│  │  ↑ 0 B/s │  │  ↓ 0 B/s │      │
+│  └──────────┘  └──────────┘      │
+│                                    │
+│  Status: Ready to connect          │
+│  SNI: decoy.example.com           │
+│  Tor: Not connected                │
+│                                    │
+└────────────────────────────────────┘
+```
+
+#### 2. Connection Screen (Connected)
+```
+┌────────────────────────────────────┐
+│  ≡  Nexus VPN              ⚙️     │
+├────────────────────────────────────┤
+│                                    │
+│         🟢                         │
+│       CONNECTED                    │
+│     00:15:32                       │
+│                                    │
+│   ┌──────────────────────────┐    │
+│   │       DISCONNECT         │    │
+│   │                          │    │
+│   └──────────────────────────┘    │
+│                                    │
+│  Live Speed:                       │
+│  ┌──────────┐  ┌──────────┐      │
+│  │  ↑ 2.3 MB│  │  ↓ 8.7 MB│      │
+│  └──────────┘  └──────────┘      │
+│                                    │
+│  Connection Details:               │
+│  ├─ SNI: decoy.example.com        │
+│  ├─ Tor: Connected (3 hops)        │
+│  ├─ Exit: Germany                  │
+│  ├─ IP: 185.220.xx.xx             │
+│  └─ Circuit: New in 2m 15s         │
+│                                    │
+│  Speed Graph:                      │
+│  ┌──────────────────────────┐    │
+│  │  ▁▂▃▅▇▆▅▃▂▁             │    │
+│  └──────────────────────────┘    │
+│                                    │
+└────────────────────────────────────┘
+```
+
+#### 3. Settings Screen
+```
+┌────────────────────────────────────┐
+│  ←  Settings                       │
+├────────────────────────────────────┤
+│                                    │
+│  SNI Configuration                 │
+│  ├─ Decoy SNI Hostname             │
+│  │  ┌──────────────────────────┐  │
+│  │  │ decoy.example.com        │  │
+│  │  └──────────────────────────┘  │
+│  ├─ Quick Presets                  │
+│  │  ○ cloudflare.com              │
+│  │  ○ google.com                  │
+│  │  ○ microsoft.com               │
+│  │  ○ Custom...                   │
+│  └─────────────────────────────────│
+│                                    │
+│  Bridge Configuration              │
+│  ├─ Use Bridges                    │
+│  │  ○ None                        │
+│  │  ○ obfs4                       │
+│  │  ○ meek                        │
+│  │  ○ snowflake                   │
+│  ├─ Bridge Addresses               │
+│  │  ┌──────────────────────────┐  │
+│  │  │ obfs4 1.2.3.4:1234 ...   │  │
+│  │  └──────────────────────────┘  │
+│  └─────────────────────────────────│
+│                                    │
+│  DNS Configuration                 │
+│  ├─ DNS Resolver                   │
+│  │  ○ Cloudflare (1.1.1.1)        │
+│  │  ○ Quad9 (9.9.9.9)             │
+│  │  ○ Custom                      │
+│  └─────────────────────────────────│
+│                                    │
+│  App Behavior                      │
+│  ├─ Auto-connect on boot           │
+│  ├─ Reconnect on network change    │
+│  ├─ Kill switch                    │
+│  ├─ Start minimized                │
+│  └─────────────────────────────────│
+│                                    │
+│  Advanced                          │
+│  ├─ Tor circuit settings           │
+│  ├─ MTU size                       │
+│  ├─ Log export                     │
+│  └─────────────────────────────────│
+│                                    │
+│  About                             │
+│  ├─ Version                        │
+│  ├─ Licenses                       │
+│  └─────────────────────────────────│
+│                                    │
+└────────────────────────────────────┘
+```
+
+### UI Components
+- ✅ **Connection Button**: Large, prominent, animated
+- ✅ **Speed Monitor**: Real-time upload/download
+- ✅ **Connection Timer**: Duration counter
+- ✅ **Status Indicators**: Color-coded (🔴🟡🟢)
+- ✅ **Speed Graph**: Visual speed history
+- ✅ **Toast Notifications**: Connection events
+- ✅ **Snackbar Messages**: Error/info messages
+- ✅ **Dialog Boxes**: Configuration dialogs
+
+---
+
+## 🚀 Advanced Features
+
+### 1. Profiles
+- **Multiple Configurations**: Save different SNI/bridge setups
+- **Quick Switch**: One-tap profile switching
+- **Auto-activate**: Profile based on network (WiFi vs Mobile)
+
+### 2. Auto-start
+- **Boot Receiver**: Start on device boot
+- **Network Change**: Reconnect on network switch
+- **App Crash Recovery**: Auto-restart on crash
+
+### 3. Notifications
+- **Persistent**: Foreground service notification
+- **Quick Actions**: Disconnect from notification
+- **Speed Display**: Live speed in notification
+- **Minimal Mode**: Compact notification
+
+### 4. Logging
+- **Connection Log**: Timestamped events
+- **Tor Log**: Tor network events
+- **Export**: Share log files
+- **Debug Mode**: Verbose logging option
+
+### 5. Split Tunneling (Future)
+- **Per-App Routing**: Select apps to bypass VPN
+- **Whitelist Mode**: Only selected apps use VPN
+- **Blacklist Mode**: Selected apps bypass VPN
+
+### 6. Bandwidth Monitoring
+- **Session Stats**: Data used in current session
+- **Daily/Weekly/Monthly**: Historical usage
+- **App-wise Breakdown**: Per-app usage (future)
+
+### 7. Tor Circuit Info
+- **Guard Node**: First hop info
+- **Middle Node**: Second hop info
+- **Exit Node**: Final hop info
+- **Country Flags**: Node locations
+- **New Circuit**: Manual circuit rotation
+
+---
+
+## 📱 Android Permissions & Services
+
+### Required Permissions
+
+#### Network Permissions
+```xml
+<!-- Full network access -->
+<uses-permission android:name="android.permission.INTERNET" />
+
+<!-- Network state monitoring -->
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+<!-- VPN Service -->
+<uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
+
+<!-- Foreground service for VPN -->
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+<!-- Post notifications (Android 13+) -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+<!-- Boot completion for auto-start -->
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+<!-- Wake lock for maintaining connection -->
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+
+<!-- Foreground service type (Android 14+) -->
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+```
+
+#### Optional Permissions
+```xml
+<!-- Query installed apps (for split tunneling) -->
+<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+<!-- Run on battery optimization whitelist -->
+<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+```
+
+### Foreground Service
+
+#### Service Declaration
+```xml
+<service
+    android:name=".NexusVpnService"
+    android:enabled="true"
+    android:exported="false"
+    android:foregroundServiceType="connectedDevice"
+    android:permission="android.permission.BIND_VPN_SERVICE">
+    <intent-filter>
+        <action android:name="android.net.VpnService" />
+    </intent-filter>
+</service>
+```
+
+#### Service Features
+- ✅ **Persistent Notification**: Shows connection status
+- ✅ **Auto-restart**: SERVICE_STICKY
+- ✅ **Quick Actions**: Disconnect button in notification
+- ✅ **Speed Display**: Live upload/download speeds
+- ✅ **Connection Timer**: Session duration
+- ✅ **Low Priority**: Minimal impact on battery
+
+### Broadcast Receivers
+
+#### Boot Receiver
+```xml
+<receiver
+    android:name=".BootReceiver"
+    android:enabled="true"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+    </intent-filter>
+</receiver>
+```
+
+#### Network Change Receiver
 ```kotlin
-// In NexusVpnService.kt
-val bridgeConfig = prefs.getBridgeConfig() // JSON string
-initVpnNative(tunFd!!.fd, sni, bridgeConfig)
-```
-
-```rust
-// In lib.rs
-let mut config = TorClientConfig::default();
-if !bridge_config.is_empty() {
-    // Configure Arti with bridges
+// Dynamically registered
+IntentFilter().apply {
+    addAction(ConnectivityManager.CONNECTIVITY_ACTION)
+    addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
 }
 ```
 
 ---
 
-## Phase 7 — Kill Switch (MINOR)
+## 🔨 Build & CI/CD
 
-### Problem
-`killSwitch` pref exists but no iptables rules are set.
+### GitHub Actions Workflow
 
-### Solution
-On Android, use `VpnService.Builder.addAllowedApplication()` /
-`addDisallowedApplication()` instead of iptables. Or set up a
-`ProtectSocket` callback that blocks non-Tor traffic.
+#### Triggers
+- ✅ **Every Push**: Auto-build on `main` branch
+- ✅ **Pull Requests**: Build verification
+- ✅ **Manual Trigger**: `workflow_dispatch`
+- ✅ **Tags**: Release builds on version tags
+
+#### Build Matrix
+```yaml
+Architectures:
+  - arm64-v8a (primary)
+  - x86_64 (emulators)
+  - armeabi-v7a (legacy, optional)
+  - x86 (legacy, optional)
+
+Build Types:
+  - debug (testing)
+  - release (production)
+```
+
+#### Build Steps
+1. **Checkout**: Repository code
+2. **Setup JDK 17**: Android compilation
+3. **Setup Rust**: Native library build
+4. **Setup NDK**: Rust → Android cross-compile
+5. **Download Tor Bundles**: GeoIP data
+6. **Build Rust Core**: cargo-ndk for each arch
+7. **Build APKs**: ./gradlew assembleDebug/Release
+8. **Upload Artifacts**: Store APKs
+9. **Auto Release**: Create GitHub release
+
+#### Auto Release
+- **Tag Format**: `vYYYYMMDD.HHMMSS`
+- **Release Notes**: Auto-generated from commits
+- **Assets**: All APK variants
+- **Latest Flag**: Mark as latest release
+
+### Build Optimization for Low RAM
+- ✅ **CI Runs on GitHub**: No local builds on device
+- ✅ **Cached Dependencies**: Gradle & Cargo caches
+- ✅ **Parallel Builds**: Multi-arch simultaneous
+- ✅ **Incremental Builds**: Only changed modules
+- ✅ **Memory Limits**: CI runner memory management
 
 ---
 
-## Implementation Order (for CI efficiency)
+## 📁 Project Structure
 
-| Order | Phase | Files Changed | Status |
-|-------|-------|---------------|--------|
-| 1 | **Phase 1** — Fix Bridge | `lib.rs` | ✅ Done |
-| 2 | **Phase 2** — Wire parser/rewriter | `sni/mod.rs`, `sni/parser.rs`, `sni/rewriter.rs` | ✅ Done |
-| 3 | **Phase 3** — SNI Interceptor | `lib.rs` | ✅ Done |
-| 4 | **Phase 4** — Hostname Tor | `lib.rs` | ✅ Done |
-| 5 | **Phase 5** — DNS forwarder | `lib.rs` | ✅ Done |
-| 6 | **Phase 6** — Bridges | `lib.rs`, `NexusVpnService.kt` | ✅ Done |
-| 7 | **Phase 7** — Kill switch | `NexusVpnService.kt` | ✅ Done |
+```
+Nexus-Vpn/
+├── .github/
+│   └── workflows/
+│       └── build.yml                 # Auto build & release
+│
+├── android/                          # Android app module
+│   ├── app/
+│   │   ├── src/main/
+│   │   │   ├── AndroidManifest.xml   # Permissions, services
+│   │   │   ├── java/com/nexusvpn/
+│   │   │   │   ├── MainActivity.kt   # Entry point
+│   │   │   │   ├── NexusVpnService.kt # VPN service
+│   │   │   │   ├── ui/
+│   │   │   │   │   ├── theme/        # Compose theming
+│   │   │   │   │   ├── HomeScreen.kt
+│   │   │   │   │   └── SettingsScreen.kt
+│   │   │   │   ├── viewmodel/
+│   │   │   │   │   └── VpnViewModel.kt
+│   │   │   │   ├── receiver/
+│   │   │   │   │   └── BootReceiver.kt
+│   │   │   │   └── preferences/
+│   │   │   │       └── AppPreferences.kt
+│   │   │   ├── res/
+│   │   │   │   ├── drawable/         # Icons, images
+│   │   │   │   └── values/           # Strings, colors
+│   │   │   └── assets/tor/           # Tor geoip files
+│   │   └── build.gradle.kts          # App build config
+│   ├── build.gradle.kts              # Project build config
+│   ├── settings.gradle.kts           # Gradle settings
+│   └── gradle.properties             # Gradle properties
+│
+├── rust-core/                        # Pure Rust VPN core
+│   ├── src/
+│   │   ├── lib.rs                    # JNI entry, main loop
+│   │   ├── tun.rs                    # TUN interface
+│   │   ├── sni/
+│   │   │   ├── mod.rs                # SNI module
+│   │   │   ├── parser.rs             # TLS ClientHello parser
+│   │   │   └── rewriter.rs           # SNI rewriter
+│   │   ├── tor.rs                    # Tor connection (Arti)
+│   │   ├── dns.rs                    # DNS forwarder
+│   │   ├── bridge.rs                 # smoltcp ↔ Tor bridge
+│   │   └── dual_log.rs               # Logging utility
+│   ├── Cargo.toml                    # Rust dependencies
+│   └── Cargo.lock                    # Locked versions
+│
+├── MASTERPLAN.md                     # This file
+├── README.md                         # Project overview
+└── .gitignore                        # Git ignore rules
+```
 
 ---
 
-## What Works Today
+## 🚧 Implementation Phases
 
-- ✅ Android UI (Jetpack Compose, Proton VPN-style)
-- ✅ TUN interface setup via VpnService.Builder
-- ✅ JNI bindings (init/stop/setSNI + bridge config)
-- ✅ smoltcp virtual stack (10.8.0.2/24, MTU 1500)
-- ✅ Arti bootstrap to Tor network
-- ✅ Raw IP packets flow TUN → smoltcp
-- ✅ **Bidirectional smoltcp ↔ Tor bridge** (channel-based, deduplicated)
-- ✅ **SNI parser** with overflow-safe bounds checking
-- ✅ **SNI rewriter** — replaces SNI in TLS ClientHello with decoy
-- ✅ **SNI Interceptor** — inspects first TCP payload, extracts real hostname
-- ✅ **Hostname-aware Tor connections** — connects to real host, sends decoy SNI
-- ✅ **DNS forwarder** — queries forwarded through Tor to 1.1.1.1:53
-- ✅ **Socket lifecycle** — proper cleanup on close, EOF, connection failure
-- ✅ **Bridge/pluggable transport config** — obfs4/snowflake/meek via custom bridge lines
-- ✅ **Kill switch** — `setBlocking(true)` on Android Q+ prevents leaks when VPN drops
-- ✅ **Relay-level SNI spoofing** — TLS to guard relays uses decoy SNI (like Invisible Pro)
+### Phase 1: Fix Build & Foundation ✅
+- [x] Fix Gradle repository conflict
+- [ ] Verify CI build passes
+- [ ] Add all Android permissions
+- [ ] Setup foreground service
+- [ ] Implement boot receiver
 
-## What's Still Incomplete
+**Status**: In Progress  
+**ETA**: Next commits
 
-- ❌ SNI rewriter: cannot inject SNI into ClientHello that lacks it (only rewrites existing)
-- ❌ DNS forwarder: one response per query (no retry on loss)
-- ❌ No graceful shutdown of active Tor circuits
-- ❌ Bridge PT proxy binary not bundled (user must provide obfs4proxy path)
-- ❌ No IPv6 support in smoltcp stack
+---
 
-## End State
+### Phase 2: Core SNI Functionality 🔨
+- [ ] Complete SNI parser (handle all TLS versions)
+- [ ] Implement SNI injector (for ClientHello without SNI)
+- [ ] Test SNI rewriting with real servers
+- [ ] Add SNI validation & error handling
 
-User sets `decoy.example.com` as SNI host → presses CONNECT →
-all TLS ClientHello packets have their SNI rewritten to `decoy.example.com`
-→ the real hostname is extracted → connection forwarded through Tor →
-server sees decoy SNI, serves content, traffic exits via Tor exit node
-to the real destination. **Exactly like Invisible Pro.**
+**Status**: Not Started  
+**Priority**: Critical
+
+---
+
+### Phase 3: Tor Integration 🌐
+- [ ] Integrate arti-client for Tor connections
+- [ ] Implement bridge support (obfs4/meek/snowflake)
+- [ ] Add circuit management
+- [ ] Implement stream isolation
+
+**Status**: Not Started  
+**Priority**: High
+
+---
+
+### Phase 4: DNS & Leak Protection 🛡️
+- [ ] Complete DNS forwarder through Tor
+- [ ] Implement IPv6 leak protection
+- [ ] Add DNS leak tests
+- [ ] Implement comprehensive kill switch
+
+**Status**: Not Started  
+**Priority**: High
+
+---
+
+### Phase 5: UI Polish 🎨
+- [ ] Implement all screens (Home, Settings, Status)
+- [ ] Add Material You theming
+- [ ] Implement animations & transitions
+- [ ] Add speed graphs & charts
+- [ ] Create notification UI
+
+**Status**: Not Started  
+**Priority**: Medium
+
+---
+
+### Phase 6: Advanced Features 🚀
+- [ ] User profiles system
+- [ ] Split tunneling
+- [ ] Bandwidth monitoring
+- [ ] Auto-reconnect logic
+- [ ] Log export
+- [ ] Debug mode
+
+**Status**: Not Started  
+**Priority**: Medium
+
+---
+
+### Phase 7: Testing & Optimization 🧪
+- [ ] Unit tests for Rust core
+- [ ] Integration tests
+- [ ] Memory optimization
+- [ ] Battery optimization
+- [ ] Performance benchmarks
+
+**Status**: Not Started  
+**Priority**: Medium
+
+---
+
+### Phase 8: Release & Documentation 📚
+- [ ] User documentation
+- [ ] Setup guides
+- [ ] FAQ
+- [ ] Troubleshooting guide
+- [ ] Contributor guidelines
+
+**Status**: Not Started  
+**Priority**: Low
+
+---
+
+## 🛠️ Technical Stack
+
+### Android Layer
+- **Language**: Kotlin 2.1.0
+- **UI**: Jetpack Compose
+- **Architecture**: MVVM (ViewModel + StateFlow)
+- **Navigation**: Compose Navigation
+- **Preferences**: DataStore
+- **Build**: Gradle 8.10, AGP 8.7.3
+
+### Rust Core
+- **Language**: Rust 2021 Edition
+- **Async Runtime**: Tokio
+- **Networking**: smoltcp 0.12
+- **Tor Client**: arti-client (pure Rust)
+- **FFI**: jni crate 0.21
+- **Logging**: log + dual_log
+- **Error Handling**: thiserror + anyhow
+
+### CI/CD
+- **Platform**: GitHub Actions
+- **Runner**: ubuntu-24.04
+- **Build Tools**: cargo-ndk, Gradle wrapper
+- **Artifact Storage**: GitHub Artifacts
+- **Release**: GitHub Releases
+
+### Dependencies
+
+#### Rust Dependencies
+```toml
+smoltcp = "0.12"        # Virtual TCP/IP stack
+tokio = "1.42"          # Async runtime
+arti-client = "*"       # Tor client (pure Rust)
+jni = "0.21"            # Android JNI bindings
+log = "0.4"             # Logging
+parking_lot = "0.12"    # Thread-safe data structures
+serde = "1.0"           # Serialization
+serde_json = "1.0"      # JSON parsing
+```
+
+#### Android Dependencies
+```kotlin
+// No major external dependencies!
+// Pure Compose + Material3
+// Minimal external libraries for small APK size
+```
+
+---
+
+## 📊 APK Size Targets
+
+| Component | Size (arm64) | Notes |
+|-----------|--------------|-------|
+| Rust Core | ~8-12 MB | Compiled libnexus_vpn.so |
+| Android App | ~3-5 MB | Compose + resources |
+| Tor GeoIP | ~25 MB | Optional, can be excluded |
+| **Total** | **~15-20 MB** | Without GeoIP: ~12 MB |
+
+---
+
+## 🎯 Success Metrics
+
+### Performance
+- ✅ Connection time: < 10 seconds
+- ✅ RAM usage: < 200 MB
+- ✅ Battery drain: < 5% per hour
+- ✅ APK size: < 25 MB
+
+### Security
+- ✅ Zero memory leaks (Rust guarantee)
+- ✅ Zero DNS leaks
+- ✅ Zero IP leaks
+- ✅ Perfect SNI spoofing
+
+### User Experience
+- ✅ One-tap connect
+- ✅ Clear status indicators
+- ✅ Easy SNI configuration
+- ✅ Reliable reconnection
+
+---
+
+## 🤝 Contributing
+
+### For Developers
+1. Fork the repository
+2. Create a feature branch
+3. Make changes
+4. Submit a PR
+5. GitHub Actions will auto-build
+
+### Build Locally (Not Recommended for 2GB RAM)
+```bash
+# Only if you have 8GB+ RAM
+git clone https://github.com/yourusername/Nexus-Vpn.git
+cd Nexus-Vpn
+./build.sh  # Wrapper for CI workflow
+```
+
+---
+
+## 📝 License
+
+**GPL-3.0** — Free software, freedom for users!
+
+---
+
+## 🙏 Acknowledgments
+
+- **Invisible Pro** — Inspiration for SNI + Tor concept
+- **Proton VPN** — UI/UX design inspiration
+- **Arti Project** — Pure Rust Tor implementation
+- **Tor Project** — The onion router itself
+- **smoltcp** — Excellent Rust TCP/IP stack
+- **Guardian Project** — Android privacy tools
+
+---
+
+## 📞 Support
+
+- **Issues**: GitHub Issues
+- **Discussions**: GitHub Discussions
+- **Email**: (future)
+- **Wiki**: (future)
+
+---
+
+**Last Updated**: April 4, 2026  
+**Version**: 0.50.0  
+**Status**: Active Development
+
+---
+
+> *"The right to privacy is the right to exist without being watched."*
