@@ -57,10 +57,10 @@ jobs:
           curl -fSL "https://services.gradle.org/distributions/gradle-8.10-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/
           GRADLE_HOME=/tmp/gradle-8.10
-          
+
           # Generate wrapper using the downloaded Gradle
           $GRADLE_HOME/bin/gradle wrapper --gradle-version 8.10
-          
+
           # Clean up
           rm -rf /tmp/gradle.zip /tmp/gradle-8.10
 
@@ -84,16 +84,23 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
 
+      # Debug: List built APKs
+      - name: List built APKs
+        if: always()
+        run: |
+          echo "=== Built APKs ==="
+          find android/app/build/outputs/apk -name "*.apk" -ls 2>/dev/null || echo "No APKs found!"
+
       # Upload APKs as artifacts
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: nexus-vpn-apks-${{ github.sha }}
+          name: nexus-vpn-apks
           path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/release/app-release-unsigned.apk
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
 
   # Release job (only on push to main)
   release:
@@ -112,8 +119,13 @@ jobs:
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: nexus-vpn-apks-${{ github.sha }}
+          name: nexus-vpn-apks
           path: release-apks
+
+      - name: List downloaded APKs
+        run: |
+          echo "=== Downloaded APKs ==="
+          ls -lh release-apks/ || echo "No APKs downloaded!"
 
       - name: Generate Release Tag
         id: tag
@@ -123,39 +135,19 @@ jobs:
           echo "Release tag: $TAG_NAME"
 
       - name: Generate Release Notes
-        id: notes
         run: |
           echo "## Changes in this build" > release_notes.md
           echo "" >> release_notes.md
-          
-          # Get commits since last tag
-          git fetch --tags
-          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
-          if [ -n "$LAST_TAG" ]; then
-            echo "### Commits since $LAST_TAG" >> release_notes.md
-            echo "" >> release_notes.md
-            git log --pretty=format:"- %s (%h)" $LAST_TAG..HEAD >> release_notes.md
-          else
-            echo "### Recent Commits" >> release_notes.md
-            echo "" >> release_notes.md
-            git log --pretty=format:"- %s (%h)" -20 >> release_notes.md
-          fi
-          
+
+          # Get recent commits
+          git log --pretty=format:"- %s (%h)" -20 >> release_notes.md
+
           echo "" >> release_notes.md
           echo "" >> release_notes.md
           echo "## APK Variants" >> release_notes.md
           echo "" >> release_notes.md
           echo "- **app-debug.apk** - Debug build for testing" >> release_notes.md
           echo "- **app-release-unsigned.apk** - Release build (unsigned)" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "## Installation" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "1. Download the APK file" >> release_notes.md
-          echo "2. Enable 'Install from Unknown Sources' in Android settings" >> release_notes.md
-          echo "3. Install the APK" >> release_notes.md
-          
-          cat release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -168,7 +160,6 @@ jobs:
             release-apks/app-release-unsigned.apk
           draft: false
           prerelease: false
-          generate_release_notes: false
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -177,4 +168,3 @@ jobs:
         run: |
           echo "✅ Release created: ${{ steps.tag.outputs.tag_name }}"
           echo "📦 APKs uploaded to release"
-          echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag_name }}"
