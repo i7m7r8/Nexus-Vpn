@@ -277,7 +277,7 @@ class NexusVpnService : VpnService() {
             }
         }.start()
 
-        Log.i(TAG, "✅ Tor process started (PID: ${torProcess?.pid()})")
+        Log.i(TAG, "✅ Tor process started")
     }
 
     private fun buildBridgeConfigJson(prefs: com.nexusvpn.android.data.Prefs): String {

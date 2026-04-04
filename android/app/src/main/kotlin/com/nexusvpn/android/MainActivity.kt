@@ -247,7 +247,7 @@ fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
                     )
                 )
                 Spacer(Modifier.height(8.dp))
-                Button({ prefs.sniHostname = sniHost; NexusVpnService.updateSniHostname(sniHost) },
+                Button({ prefs.sniHostname = sniHost },
                     colors = ButtonDefaults.buttonColors(containerColor = purple), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                     Text("Apply SNI Change", fontWeight = FontWeight.Bold)
                 }
@@ -361,10 +361,9 @@ fun LogScreen(darkBg: Color, cardBg: Color, green: Color) {
     // Poll logs from Rust buffer every 500ms when running
     LaunchedEffect(running) {
         if (running) {
-            NexusVpnService.clearLogsNative()
             while (running) {
                 delay(500)
-                val raw = NexusVpnService.getLogsNative()
+                val raw = NexusVpnService.getLogBufferNative()
                 if (raw.isNotEmpty()) {
                     val newLines = raw.split("\n").filter { it.isNotBlank() }
                     if (newLines.isNotEmpty()) {
