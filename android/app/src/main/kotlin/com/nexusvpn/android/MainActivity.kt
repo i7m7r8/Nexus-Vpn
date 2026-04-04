@@ -216,8 +216,14 @@ fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
                     } else {
                         // Permission already granted — start VPN
                         prefs.sniHostname = sniHost
-                        ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "CONNECT" })
-                        Toast.makeText(ctx, "🔒 Connecting to Tor...", Toast.LENGTH_SHORT).show()
+                        val intent = Intent(ctx, NexusVpnService::class.java).apply { action = "CONNECT" }
+                        // Use startForegroundService for Android 8+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            ContextCompat.startForegroundService(ctx, intent)
+                        } else {
+                            ctx.startService(intent)
+                        }
+                        Toast.makeText(ctx, "🔒 Starting Tor...", Toast.LENGTH_LONG).show()
                     }
                 } else {
                     ctx.startService(Intent(ctx, NexusVpnService::class.java).apply { action = "DISCONNECT" })

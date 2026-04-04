@@ -73,10 +73,13 @@ class NexusVpnService : VpnService() {
         if (isRunning) return
         isRunning = true
 
-        try {
-            val prefs = NexusVpnApplication.prefs
-            val sni = prefs.sniHostname ?: "www.cloudflare.com"
+        // MUST call startForeground within 5 seconds of service start
+        // Do this FIRST before any heavy operations
+        val prefs = NexusVpnApplication.prefs
+        val sni = prefs.sniHostname ?: "www.cloudflare.com"
+        startForeground(NOTIF_ID, notif("Starting Tor..."))
 
+        try {
             // Step 1: Extract Tor binary from assets
             val torDir = File(applicationContext.filesDir, "tor")
             torDir.mkdirs()
@@ -97,7 +100,7 @@ class NexusVpnService : VpnService() {
             // Step 3: Start Tor as subprocess
             startTorProcess(torBinary, torrcFile, torDataDir)
 
-            // Step 4: Wait for Tor to be ready (simple delay for bootstrap)
+            // Step 4: Update notification
             val statusMsg = when {
                 prefs.useBridges && prefs.killSwitch -> "Starting Bridge + Tor + Kill Switch"
                 prefs.useBridges -> "Starting Bridge + Tor"
