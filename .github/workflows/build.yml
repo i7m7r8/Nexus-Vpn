@@ -50,6 +50,20 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Generate Gradle Wrapper
+        working-directory: android
+        run: |
+          # Download and extract Gradle 8.10 to get wrapper files
+          curl -fSL "https://services.gradle.org/distributions/gradle-8.10-bin.zip" -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp/
+          GRADLE_HOME=/tmp/gradle-8.10
+          
+          # Generate wrapper using the downloaded Gradle
+          $GRADLE_HOME/bin/gradle wrapper --gradle-version 8.10
+          
+          # Clean up
+          rm -rf /tmp/gradle.zip /tmp/gradle-8.10
+
       # Build Rust lib for both architectures
       - name: Build Rust lib (arm64-v8a)
         working-directory: rust-core
