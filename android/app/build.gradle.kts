@@ -45,6 +45,22 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        jniLibs {
+            // Keep all native libraries from all dependencies
+            useLegacyPackaging = true
+        }
+        // Don't strip debug symbols from tor-android's libtor.so
+        jniLibs.keepDebugSymbols += "**/libtor.so"
+    }
+
+    // Ensure we get native libs from dependencies
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
 }
 
 dependencies {

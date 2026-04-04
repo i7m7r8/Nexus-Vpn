@@ -205,18 +205,46 @@ class NexusVpnService : VpnService() {
     }
 
     private fun extractTorBinary(torDir: File): File? {
-        val abi = Build.SUPPORTED_ABIS.firstOrNull { it.contains("arm64") || it.contains("aarch64") }
-            ?: Build.SUPPORTED_ABIS.firstOrNull { it.contains("x86_64") }
-            ?: return null
+        Log.i(TAG, "🔍 Looking for libtor.so...")
+        Log.i(TAG, "📂 Native lib dir: ${applicationInfo.nativeLibraryDir}")
+        Log.i(TAG, "📂 Supported ABIs: ${Build.SUPPORTED_ABIS.joinToString(", ")}")
 
-        // libtor.so is in the native library directory — ALWAYS executable
+        // List all files in native library directory
         val nativeLibDir = applicationInfo.nativeLibraryDir
+        val nativeFiles = File(nativeLibDir).listFiles()?.map { it.name } ?: emptyList()
+        Log.i(TAG, "📁 Files in native lib dir: ${nativeFiles.joinToString(", ")}")
+
+        // Try to find libtor.so
         val torBinary = File(nativeLibDir, "libtor.so")
 
         if (!torBinary.exists()) {
             Log.e(TAG, "❌ libtor.so not found in $nativeLibDir")
-            Log.e(TAG, "Available: ${File(nativeLibDir).listFiles()?.map { it.name }?.joinToString(", ")}")
+            Log.e(TAG, "📋 Available files: ${nativeFiles.joinToString(", ")}")
+
+            // Try extracting from tor-android AAR's assets if it's there
+            try {
+                Log.i(TAG, "🔄 Trying to extract libtor.so from assets...")
+                val assetPath = "lib/${Build.SUPPORTED_ABIS.firstOrNull()}/libtor.so"
+                assets.open(assetPath).use { input ->
+                    val dest = File(torDir, "libtor.so")
+                    dest.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                    dest.setExecutable(true)
+                    Log.i(TAG, "✅ Extracted libtor.so from assets to ${dest.absolutePath}")
+                    return dest
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to extract libtor.so from assets", e)
+            }
+
             return null
+        }
+
+        // Make sure it's executable
+        if (!torBinary.canExecute()) {
+            torBinary.setExecutable(true)
+            Log.i(TAG, "🔧 Made libtor.so executable")
         }
 
         Log.i(TAG, "✅ Found libtor.so: ${torBinary.absolutePath} (${torBinary.length()} bytes)")

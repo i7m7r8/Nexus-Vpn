@@ -91,6 +91,23 @@ jobs:
           echo "=== Built APKs ==="
           find android/app/build/outputs/apk -name "*.apk" -ls 2>/dev/null || echo "No APKs found!"
 
+      # Debug: Check native libraries in APK
+      - name: Check native libraries in APK
+        if: always()
+        run: |
+          echo "=== Checking APK for native libraries ==="
+          APK_FILE=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          if [ -f "$APK_FILE" ]; then
+            echo "APK: $APK_FILE"
+            unzip -l "$APK_FILE" | grep -E "\.(so|aar)" || echo "No .so files found in APK!"
+            echo "---"
+            unzip -l "$APK_FILE" | grep -i "libtor" || echo "No libtor found!"
+            echo "---"
+            unzip -l "$APK_FILE" | grep -i "libnexus" || echo "No libnexus_vpn found!"
+          else
+            echo "No debug APK found"
+          fi
+
       # Upload APKs as artifacts
       - name: Upload APKs
         uses: actions/upload-artifact@v4
