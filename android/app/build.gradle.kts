@@ -20,19 +20,6 @@ android {
         }
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-        debug {
-            isMinifyEnabled = false
-        }
-    }
-
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -48,17 +35,35 @@ android {
 
     packaging {
         jniLibs {
-            // Keep all native libraries from all dependencies
-            useLegacyPackaging = true
+            // Keep debug symbols for libtor.so (from tor-android AAR)
+            keepDebugSymbols += "**/libtor.so"
         }
-        // Don't strip debug symbols from tor-android's libtor.so
-        jniLibs.keepDebugSymbols += "**/libtor.so"
     }
 
-    // Ensure we get native libs from dependencies
+    // Ensure native libs from AAR dependencies are included
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
+
+    // Don't strip native libraries from release builds
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // Keep native libraries
+            packaging {
+                jniLibs {
+                    keepDebugSymbols += "**/libtor.so"
+                }
+            }
+        }
+        debug {
+            isMinifyEnabled = false
         }
     }
 }

@@ -214,37 +214,20 @@ class NexusVpnService : VpnService() {
         val nativeFiles = File(nativeLibDir).listFiles()?.map { it.name } ?: emptyList()
         Log.i(TAG, "📁 Files in native lib dir: ${nativeFiles.joinToString(", ")}")
 
-        // Try to find libtor.so
+        // Try to find libtor.so (from tor-android AAR dependency)
         val torBinary = File(nativeLibDir, "libtor.so")
 
         if (!torBinary.exists()) {
             Log.e(TAG, "❌ libtor.so not found in $nativeLibDir")
             Log.e(TAG, "📋 Available files: ${nativeFiles.joinToString(", ")}")
-
-            // Try extracting from tor-android AAR's assets if it's there
-            try {
-                Log.i(TAG, "🔄 Trying to extract libtor.so from assets...")
-                val assetPath = "lib/${Build.SUPPORTED_ABIS.firstOrNull()}/libtor.so"
-                assets.open(assetPath).use { input ->
-                    val dest = File(torDir, "libtor.so")
-                    dest.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                    dest.setExecutable(true)
-                    Log.i(TAG, "✅ Extracted libtor.so from assets to ${dest.absolutePath}")
-                    return dest
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to extract libtor.so from assets", e)
-            }
-
+            Log.e(TAG, "💡 Make sure tor-android AAR dependency is properly included")
             return null
         }
 
-        // Make sure it's executable
-        if (!torBinary.canExecute()) {
-            torBinary.setExecutable(true)
-            Log.i(TAG, "🔧 Made libtor.so executable")
+        // Verify it's a valid file and has reasonable size (>1MB)
+        if (torBinary.length() < 1_000_000) {
+            Log.e(TAG, "❌ libtor.so seems corrupted (size: ${torBinary.length()} bytes)")
+            return null
         }
 
         Log.i(TAG, "✅ Found libtor.so: ${torBinary.absolutePath} (${torBinary.length()} bytes)")
