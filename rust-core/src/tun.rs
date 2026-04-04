@@ -4,6 +4,9 @@ use std::os::unix::io::RawFd;
 use std::os::unix::io::AsRawFd;
 use std::io;
 use libc;
+use std::sync::atomic::AtomicI32;
+
+static TUN_FD: AtomicI32 = AtomicI32::new(-1);
 
 /// Borrowed fd wrapper — does NOT take ownership
 struct BorrowedFd(RawFd);
@@ -17,8 +20,6 @@ impl AsRawFd for BorrowedFd {
 pub struct TunDevice {
     fd: BorrowedFd,
     rx_buf: Vec<u8>,
-    rx_pos: usize,
-    rx_len: usize,
 }
 
 impl TunDevice {
@@ -27,11 +28,10 @@ impl TunDevice {
             let flags = libc::fcntl(fd, libc::F_GETFL);
             libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
         }
+        TUN_FD.store(fd, std::sync::atomic::Ordering::SeqCst);
         Ok(Self {
             fd: BorrowedFd(fd),
             rx_buf: vec![0u8; 4096],
-            rx_pos: 0,
-            rx_len: 0,
         })
     }
 
@@ -44,23 +44,6 @@ impl TunDevice {
         }
         Ok(n as usize)
     }
-
-    pub async fn write_packet(&self, buf: &[u8]) -> io::Result<usize> {
-        loop {
-            let n = unsafe {
-                libc::write(self.fd.as_raw_fd(), buf.as_ptr() as *const libc::c_void, buf.len())
-            };
-            if n < 0 {
-                let err = io::Error::last_os_error();
-                if err.kind() == io::ErrorKind::WouldBlock {
-                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-                    continue;
-                }
-                return Err(err);
-            }
-            return Ok(n as usize);
-        }
-    }
 }
 
 impl smoltcp::phy::Device for TunDevice {
@@ -71,8 +54,6 @@ impl smoltcp::phy::Device for TunDevice {
         // Try to read from TUN fd
         match self.read_raw() {
             Ok(n) if n > 0 => {
-                self.rx_len = n;
-                self.rx_pos = 0;
                 Some((RxToken { buf: &self.rx_buf[..n] }, TxToken))
             }
             _ => None,
@@ -107,6 +88,13 @@ impl smoltcp::phy::TxToken for TxToken {
     fn consume<R, F>(self, len: usize, f: F) -> R where F: FnOnce(&mut [u8]) -> R {
         let mut buf = vec![0u8; len];
         let result = f(&mut buf);
+        // Write packet to TUN fd
+        let fd = TUN_FD.load(std::sync::atomic::Ordering::SeqCst);
+        if fd >= 0 {
+            unsafe {
+                libc::write(fd, buf.as_ptr() as *const libc::c_void, len);
+            }
+        }
         result
     }
 }

@@ -180,18 +180,10 @@ async fn vpn_main_loop(tun_fd: RawFd, socks_port: u16, _dns_port: u16) -> anyhow
     while RUNNING.load(Ordering::SeqCst) {
         let now = smoltcp::time::Instant::now();
 
-        // Poll smoltcp (processes incoming packets from TUN)
+        // poll() handles both ingress (from TUN) and egress (to TUN)
         match iface.poll(now, &mut tun, &mut sockets) {
             smoltcp::iface::PollResult::SocketStateChanged => {}
             smoltcp::iface::PollResult::None => {}
-        }
-
-        // Dispatch outgoing packets to TUN
-        match iface.dispatch(&mut tun) {
-            Ok(()) => {}
-            Err(e) => {
-                log::debug!("iface dispatch error: {e}");
-            }
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
