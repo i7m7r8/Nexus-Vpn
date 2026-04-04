@@ -27,7 +27,7 @@ fn android_log(level: i32, tag: &str, msg: &str) {
     let tag_c = CString::new(tag).unwrap_or_default();
     let msg_c = CString::new(msg).unwrap_or_default();
     unsafe {
-        __android_log_write(level, tag_c.as_ptr(), msg_c.as_ptr());
+        __android_log_write(level, tag_c.as_ptr() as *const i8, msg_c.as_ptr() as *const i8);
     }
 }
 

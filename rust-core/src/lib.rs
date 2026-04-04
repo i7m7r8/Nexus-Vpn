@@ -140,7 +140,7 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_setSniH
 
 #[no_mangle]
 pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogBufferNative(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
 ) -> jobject {
     let buffer = dual_log::get_log_buffer();
@@ -188,8 +188,7 @@ async fn vpn_main_loop(tun_fd: RawFd, socks_port: u16, _dns_port: u16) -> anyhow
 
         // Dispatch outgoing packets to TUN
         match iface.dispatch(&mut tun) {
-            Ok(_) => {}
-            Err(smoltcp::Error::Exhausted) => {}
+            Ok(()) => {}
             Err(e) => {
                 log::debug!("iface dispatch error: {e}");
             }

@@ -64,7 +64,7 @@ impl TunDevice {
 }
 
 impl smoltcp::phy::Device for TunDevice {
-    type RxToken<'a> = RxToken where Self: 'a;
+    type RxToken<'a> = RxToken<'a> where Self: 'a;
     type TxToken<'a> = TxToken where Self: 'a;
 
     fn receive(&mut self, _timestamp: smoltcp::time::Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
