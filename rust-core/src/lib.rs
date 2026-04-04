@@ -5,7 +5,6 @@
 
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JString};
@@ -158,13 +157,13 @@ pub extern "system" fn Java_com_nexusvpn_android_service_NexusVpnService_getLogB
 async fn vpn_main_loop(tun_fd: RawFd, socks_port: u16, _dns_port: u16) -> anyhow::Result<()> {
     log::info!("🔄 VPN Main Loop starting");
 
-    let tun = tun::TunDevice::new(tun_fd)?;
+    let mut tun = tun::TunDevice::new(tun_fd)?;
     log::info!("✅ TUN device initialized");
 
     // smoltcp interface
-    let mut config = smoltcp::iface::Config::new(smoltcp::wire::HardwareAddress::Ip);
-    config.random_seed = 0x12345678;
-    let mut iface = smoltcp::iface::Interface::new(config, &mut smoltcp::time::Instant::now());
+    let config = smoltcp::iface::Config::new(smoltcp::wire::HardwareAddress::Ip);
+    let now = smoltcp::time::Instant::now();
+    let mut iface = smoltcp::iface::Interface::new(config, &mut tun, now);
     iface.update_ip_addrs(|addrs| {
         addrs.push(smoltcp::wire::IpCidr::new(
             smoltcp::wire::IpAddress::v4(10, 8, 0, 2), 24
@@ -175,43 +174,22 @@ async fn vpn_main_loop(tun_fd: RawFd, socks_port: u16, _dns_port: u16) -> anyhow
     ).unwrap();
 
     let mut sockets = smoltcp::iface::SocketSet::new(vec![]);
-    let mut rx_buf = vec![0u8; 4096];
-    let mut tx_buf = vec![0u8; 4096];
 
     log::info!("📡 Listening on TUN — routing to SOCKS 127.0.0.1:{}", socks_port);
 
     while RUNNING.load(Ordering::SeqCst) {
         let now = smoltcp::time::Instant::now();
 
-        // Poll smoltcp
-        let _ = iface.poll(now, &tun, &mut sockets);
-
-        // Read from TUN
-        match tun.read(&mut rx_buf).await {
-            Ok(n) if n > 0 => {
-                let mut slice = &rx_buf[..n];
-                if let Err(e) = iface.poll(now, &mut slice, &mut sockets) {
-                    log::debug!("iface poll rx: {e}");
-                }
-            }
-            Ok(_) => {}
-            Err(e) => {
-                if e.kind() != std::io::ErrorKind::WouldBlock {
-                    log::debug!("tun read error: {e}");
-                }
-            }
+        // Poll smoltcp (processes incoming packets from TUN)
+        match iface.poll(now, &mut tun, &mut sockets) {
+            smoltcp::iface::PollResult::SocketStateChanged => {}
+            smoltcp::iface::PollResult::None => {}
         }
 
-        // Write outgoing packets to TUN
-        match iface.dispatch(&mut tx_buf, &tun) {
-            Ok(Some((_meta, len))) => {
-                if let Err(e) = tun.write(&tx_buf[..len]).await {
-                    if e.kind() != std::io::ErrorKind::WouldBlock {
-                        log::debug!("tun write error: {e}");
-                    }
-                }
-            }
-            Ok(None) => {}
+        // Dispatch outgoing packets to TUN
+        match iface.dispatch(&mut tun) {
+            Ok(_) => {}
+            Err(smoltcp::Error::Exhausted) => {}
             Err(e) => {
                 log::debug!("iface dispatch error: {e}");
             }
