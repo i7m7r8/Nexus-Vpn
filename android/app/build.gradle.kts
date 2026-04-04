@@ -59,6 +59,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Tor binary for Android (guardianproject official)
-    implementation("info.guardianproject:tor-android:0.4.9.6")
+    implementation("info.guardianproject:tor-android:0.4.8.17.2")
     implementation("info.guardianproject:jtorctl:0.4.5.7")
 }
