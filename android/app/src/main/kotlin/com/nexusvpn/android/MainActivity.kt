@@ -341,35 +341,34 @@ fun SettingsScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
                 Text("🛡 Security", fontWeight = FontWeight.SemiBold, color = Color.White)
                 Text("✅ No Logs", color = Color.Gray, fontSize = 12.sp)
                 Text("✅ Kill Switch", color = Color.Gray, fontSize = 12.sp)
-                Text("✅ Pure Rust Tor (Arti)", color = Color.Gray, fontSize = 12.sp)
+                Text("✅ Pure Tor Binary", color = Color.Gray, fontSize = 12.sp)
             }
         }
     }
 }
 
 // ===========================================================================
-// Log Screen — reads from Rust-side log buffer via JNI
+// Log Screen — auto-captures logs from Rust-side log buffer via JNI
 // ===========================================================================
 
 @Composable
 fun LogScreen(darkBg: Color, cardBg: Color, green: Color) {
     var logs by remember { mutableStateOf<List<String>>(emptyList()) }
-    var running by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Poll logs from Rust buffer every 500ms when running
-    LaunchedEffect(running) {
-        if (running) {
-            while (running) {
-                delay(500)
-                val raw = NexusVpnService.getLogBufferNative()
-                if (raw.isNotEmpty()) {
-                    val newLines = raw.split("\n").filter { it.isNotBlank() }
-                    if (newLines.isNotEmpty()) {
-                        logs = (logs + newLines).takeLast(500) // Cap at 500 lines
-                        // Auto-scroll to bottom
-                        if (logs.size > 1) {
+    // Auto-poll logs from Rust buffer every 500ms — always running
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(500)
+            val raw = NexusVpnService.getLogBufferNative()
+            if (raw.isNotEmpty()) {
+                val newLines = raw.split("\n").filter { it.isNotBlank() }
+                if (newLines.isNotEmpty()) {
+                    logs = newLines.takeLast(500) // Cap at 500 lines, replace with latest
+                    // Auto-scroll to bottom
+                    if (logs.size > 1) {
+                        scope.launch {
                             listState.animateScrollToItem(logs.size - 1)
                         }
                     }
@@ -379,26 +378,12 @@ fun LogScreen(darkBg: Color, cardBg: Color, green: Color) {
     }
 
     Column(Modifier.fillMaxSize().padding(20.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("📋 Live Logs", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Color.White)
-            Button(
-                onClick = {
-                    running = !running
-                    if (!running) {
-                        logs = logs + "--- Log stream stopped ---"
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = if (running) Color(0xFFFA1946) else green),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(if (running) "Stop" else "Start", fontWeight = FontWeight.Bold)
-            }
-        }
+        Text("📋 Live Logs", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Color.White)
         Spacer(Modifier.height(12.dp))
 
         if (logs.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Press Start to capture logs", color = Color.Gray, fontSize = 16.sp)
+                Text("Waiting for logs...", color = Color.Gray, fontSize = 16.sp)
             }
         } else {
             LazyColumn(

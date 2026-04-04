@@ -165,38 +165,75 @@ class NexusVpnService : VpnService() {
         val archDir = if (abi.contains("arm64") || abi.contains("aarch64")) "arm64-v8a" else "x86_64"
         val assetPath = "tor/$archDir"
 
-        // Copy tor binary from assets
-        val torBinary = File(torDir, "tor")
-        if (!torBinary.exists() || torBinary.length() == 0L) {
-            try {
-                assets.open("$assetPath/tor").use { input ->
-                    torBinary.outputStream().use { output ->
+        torDir.mkdirs()
+
+        // Recursively copy entire asset tree to torDir (preserves nested dirs)
+        try {
+            copyAssets(assets, assetPath, torDir)
+            Log.i(TAG, "✅ Extracted Tor assets: $assetPath")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to extract Tor assets", e)
+            return null
+        }
+
+        // Find the tor binary (may be in subdirectory)
+        val torBinary = findFile(torDir, "tor")
+        if (torBinary == null) {
+            Log.e(TAG, "Tor binary not found in $torDir — contents: ${torDir.listFiles()?.map { it.name }?.joinToString(", ")}")
+            return null
+        }
+        torBinary.setExecutable(true)
+        Log.i(TAG, "✅ Found Tor binary: ${torBinary.absolutePath}")
+        return torBinary
+    }
+
+    /** Recursively copy assets directory to destination */
+    private fun copyAssets(assetMgr: android.content.res.AssetManager, assetPath: String, destDir: File) {
+        val files = assetMgr.list(assetPath) ?: return
+        if (files.isEmpty()) {
+            // It's a file — copy it
+            val destFile = File(destDir, assetPath.substringAfterLast("/"))
+            // If we're at a leaf file, copy from the full path
+            return
+        }
+
+        // If it has subitems, it's a directory
+        val destSubDir = File(destDir, assetPath.substringAfterLast("/"))
+        if (assetPath.contains("/")) {
+            destSubDir.mkdirs()
+        } else {
+            destDir.mkdirs()
+        }
+
+        for (file in files) {
+            val subPath = if (assetPath == "tor/arm64-v8a" || assetPath == "tor/x86_64") "$assetPath/$file" else file
+            val fullAssetPath = if (assetPath == "tor/arm64-v8a" || assetPath == "tor/x86_64") subPath else "$assetPath/$file"
+            val subFiles = assetMgr.list(fullAssetPath)
+            if (subFiles.isNullOrEmpty()) {
+                // It's a file
+                val destFile = File(destSubDir, file)
+                assetMgr.open(fullAssetPath).use { input ->
+                    destFile.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
-                torBinary.setExecutable(true)
-                Log.i(TAG, "✅ Extracted Tor binary: $archDir")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to extract Tor binary", e)
-                return null
+            } else {
+                // It's a directory
+                copyAssets(assetMgr, fullAssetPath, destSubDir)
             }
         }
+    }
 
-        // Copy geoip files
-        for (geoipFile in listOf("geoip", "geoip6")) {
-            val dest = File(torDir, geoipFile)
-            if (!dest.exists()) {
-                try {
-                    assets.open("$assetPath/$geoipFile").use { input ->
-                        dest.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                } catch (_: Exception) {}
+    /** Find a file by name recursively in a directory */
+    private fun findFile(dir: File, name: String): File? {
+        val files = dir.listFiles() ?: return null
+        for (f in files) {
+            if (f.name == name) return f
+            if (f.isDirectory) {
+                findFile(f, name)?.let { return it }
             }
         }
-
-        return torBinary
+        return null
     }
 
     private fun generateTorrc(torrc: File, dataDir: File, sni: String, prefs: com.nexusvpn.android.data.Prefs) {
