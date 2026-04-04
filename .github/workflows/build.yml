@@ -45,36 +45,49 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Download Tor Expert Bundles from official Tor Project
+      # Download Tor Expert Bundles from official Tor Project (for geoip data)
       - name: Download Tor Expert Bundle (arm64-v8a)
         run: |
-          mkdir -p /tmp/tor-arm64 android/app/src/main/assets/tor/arm64-v8a
+          mkdir -p /tmp/tor-arm64 android/app/src/main/assets/tor
           curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-aarch64-${{ env.TOR_VERSION }}.tar.gz" \
             -o /tmp/tor-arm64.tar.gz
           tar xzf /tmp/tor-arm64.tar.gz -C /tmp/tor-arm64
-          echo "=== Extracted structure ==="
-          find /tmp/tor-arm64 -type f | head -40
-          # Copy everything into assets dir
-          cp -a /tmp/tor-arm64/. android/app/src/main/assets/tor/arm64-v8a/
-          echo "=== Copied structure ==="
-          find android/app/src/main/assets/tor/arm64-v8a -type f | head -40
-          # Make executables executable
-          find android/app/src/main/assets/tor/arm64-v8a -type f \( -name "tor" -o -name "snowflake*" -o -name "lyrebird*" -o -name "obfs*" -o -name "*.sh" \) -exec chmod +x {} \;
+          # Copy geoip files to assets
+          find /tmp/tor-arm64 -name "geoip*" -exec cp {} android/app/src/main/assets/tor/ \;
+          echo "=== GeoIP files ==="
+          ls -la android/app/src/main/assets/tor/
 
       - name: Download Tor Expert Bundle (x86_64)
         run: |
-          mkdir -p /tmp/tor-x86_64 android/app/src/main/assets/tor/x86_64
+          mkdir -p /tmp/tor-x86_64 android/app/src/main/assets/tor
           curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-x86_64-${{ env.TOR_VERSION }}.tar.gz" \
             -o /tmp/tor-x86_64.tar.gz
           tar xzf /tmp/tor-x86_64.tar.gz -C /tmp/tor-x86_64
-          echo "=== Extracted structure ==="
-          find /tmp/tor-x86_64 -type f | head -40
-          # Copy everything into assets dir
-          cp -a /tmp/tor-x86_64/. android/app/src/main/assets/tor/x86_64/
-          echo "=== Copied structure ==="
-          find android/app/src/main/assets/tor/x86_64 -type f | head -40
-          # Make executables executable
-          find android/app/src/main/assets/tor/x86_64 -type f \( -name "tor" -o -name "snowflake*" -o -name "lyrebird*" -o -name "obfs*" -o -name "*.sh" \) -exec chmod +x {} \;
+          # Copy geoip files to assets
+          find /tmp/tor-x86_64 -name "geoip*" -exec cp {} android/app/src/main/assets/tor/ \;
+
+      # Download guardianproject tor-android libtor.so (executable from lib/ dir)
+      - name: Download libtor.so (arm64-v8a)
+        run: |
+          mkdir -p /tmp/tor-aar
+          curl -fSL "https://raw.githubusercontent.com/guardianproject/gpmaven/master/info/guardianproject/tor-android/0.4.8.16/tor-android-0.4.8.16.aar" \
+            -o /tmp/tor-aar/tor.aar
+          cd /tmp/tor-aar && unzip -o tor.aar
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp jni/arm64-v8a/libtor.so android/app/src/main/jniLibs/arm64-v8a/
+          echo "=== libtor.so arm64 ==="
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Download libtor.so (x86_64)
+        run: |
+          mkdir -p /tmp/tor-aar
+          curl -fSL "https://raw.githubusercontent.com/guardianproject/gpmaven/master/info/guardianproject/tor-android/0.4.8.16/tor-android-0.4.8.16.aar" \
+            -o /tmp/tor-aar/tor.aar
+          cd /tmp/tor-aar && unzip -o tor.aar
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          cp jni/x86_64/libtor.so android/app/src/main/jniLibs/x86_64/
+          echo "=== libtor.so x86_64 ==="
+          ls -la android/app/src/main/jniLibs/x86_64/
 
       # Generate Gradle wrapper (using 8.10)
       - name: Generate Gradle wrapper

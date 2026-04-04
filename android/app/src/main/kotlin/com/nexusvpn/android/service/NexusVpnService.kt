@@ -105,27 +105,29 @@ class NexusVpnService : VpnService() {
             startForeground(NOTIF_ID, notif("Starting Tor..."))
             Log.i(TAG, "✅ startForeground called")
 
-            // Step 1: Extract Tor binary from assets
+            // Step 1: Get Tor binary (libtor.so from native lib dir)
             val torDir = File(applicationContext.filesDir, "tor")
             torDir.mkdirs()
-            Log.i(TAG, "📂 Tor dir: ${torDir.absolutePath}")
             val torBinary = extractTorBinary(torDir)
             if (torBinary == null) {
-                Log.e(TAG, "❌ Failed to extract Tor binary")
+                Log.e(TAG, "❌ Failed to find libtor.so")
                 broadcastStatus("Error: Tor binary missing")
                 isRunning = false
                 return
             }
-            Log.i(TAG, "✅ Tor binary: ${torBinary.absolutePath} (${torBinary.length()} bytes)")
 
-            // Step 2: Generate torrc with SNI config
+            // Step 2: Copy geoip files from assets to torDir
+            copyGeoipFiles(torDir)
+
+            // Step 3: Generate torrc with SNI config (InviZible Pro style)
             val torrcFile = File(torDir, "torrc")
             val torDataDir = File(torDir, "data")
             torDataDir.mkdirs()
             generateTorrc(torrcFile, torDataDir, sni, prefs)
             Log.i(TAG, "✅ torrc generated: ${torrcFile.absolutePath}")
+            Log.i(TAG, "🎭 SNI Host: $sni (TLS handshake will show this hostname)")
 
-            // Step 3: Start Tor as subprocess
+            // Step 4: Start Tor as subprocess
             Log.i(TAG, "🚀 Starting Tor process...")
             startTorProcess(torBinary, torrcFile, torDataDir)
 
@@ -207,83 +209,36 @@ class NexusVpnService : VpnService() {
             ?: Build.SUPPORTED_ABIS.firstOrNull { it.contains("x86_64") }
             ?: return null
 
-        val archDir = if (abi.contains("arm64") || abi.contains("aarch64")) "arm64-v8a" else "x86_64"
-        val assetPath = "tor/$archDir"
+        // libtor.so is in the native library directory — ALWAYS executable
+        val nativeLibDir = applicationInfo.nativeLibraryDir
+        val torBinary = File(nativeLibDir, "libtor.so")
 
-        torDir.mkdirs()
-        // Clear old files to avoid stale binaries
-        torDir.listFiles()?.forEach { it.deleteRecursively() }
-
-        // Recursively copy entire asset tree to torDir
-        try {
-            copyAssets(assets, assetPath, torDir)
-            Log.i(TAG, "✅ Extracted Tor assets: $assetPath")
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to extract Tor assets", e)
+        if (!torBinary.exists()) {
+            Log.e(TAG, "❌ libtor.so not found in $nativeLibDir")
+            Log.e(TAG, "Available: ${File(nativeLibDir).listFiles()?.map { it.name }?.joinToString(", ")}")
             return null
         }
 
-        // Find the tor binary
-        val torBinary = findFile(torDir, "tor")
-        if (torBinary == null) {
-            Log.e(TAG, "❌ Tor binary not found in $torDir")
-            Log.e(TAG, "Contents: ${torDir.listFiles()?.map { it.name }?.joinToString(", ")}")
-            return null
-        }
-
-        // Make executable using chmod
-        try {
-            Runtime.getRuntime().exec(arrayOf("chmod", "755", torBinary.absolutePath)).waitFor()
-            Log.i(TAG, "✅ chmod 755 on Tor binary")
-        } catch (e: Exception) {
-            Log.w(TAG, "⚠️ chmod failed, trying setExecutable", e)
-            torBinary.setExecutable(true, false)
-        }
-
-        Log.i(TAG, "✅ Found Tor binary: ${torBinary.absolutePath} (size: ${torBinary.length()})")
+        Log.i(TAG, "✅ Found libtor.so: ${torBinary.absolutePath} (${torBinary.length()} bytes)")
         return torBinary
     }
 
-    /** Recursively copy assets directory to destination */
-    private fun copyAssets(assetMgr: android.content.res.AssetManager, assetPath: String, destDir: File) {
-        val files = assetMgr.list(assetPath) ?: return
-        if (files.isEmpty()) return
-
-        val destSubDir = File(destDir, assetPath.substringAfterLast("/"))
-        if (assetPath.contains("/")) {
-            destSubDir.mkdirs()
-        } else {
-            destDir.mkdirs()
-        }
-
-        for (file in files) {
-            val fullAssetPath = if (assetPath == "tor/arm64-v8a" || assetPath == "tor/x86_64") "$assetPath/$file" else "$assetPath/$file"
-            val subFiles = assetMgr.list(fullAssetPath)
-            if (subFiles.isNullOrEmpty()) {
-                // It's a file
-                val destFile = File(destSubDir, file)
-                assetMgr.open(fullAssetPath).use { input ->
-                    destFile.outputStream().use { output ->
-                        input.copyTo(output)
+    private fun copyGeoipFiles(torDir: File) {
+        try {
+            assets.list("tor")?.filter { it.startsWith("geoip") }?.forEach { assetName ->
+                val dest = File(torDir, assetName)
+                if (!dest.exists()) {
+                    assets.open("tor/$assetName").use { input ->
+                        dest.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
                     }
+                    Log.i(TAG, "📄 Copied $assetName")
                 }
-            } else {
-                // It's a directory
-                copyAssets(assetMgr, fullAssetPath, destSubDir)
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "⚠️ Could not copy geoip files", e)
         }
-    }
-
-    /** Find a file by name recursively in a directory */
-    private fun findFile(dir: File, name: String): File? {
-        val files = dir.listFiles() ?: return null
-        for (f in files) {
-            if (f.name == name) return f
-            if (f.isDirectory) {
-                findFile(f, name)?.let { return it }
-            }
-        }
-        return null
     }
 
     private fun generateTorrc(torrc: File, dataDir: File, sni: String, prefs: com.nexusvpn.android.data.Prefs) {
@@ -307,13 +262,13 @@ class NexusVpnService : VpnService() {
             lines.add("UseBridges 1")
             when (prefs.bridgeType) {
                 "obfs4" -> {
-                    lines.add("ClientTransportPlugin obfs4 exec ${File(applicationContext.filesDir, "tor/lyrebird").absolutePath}")
+                    // obfs4 via lyrebird (built into Tor 0.4.9+)
                     if (!prefs.customBridgeLine.isNullOrEmpty()) {
                         lines.add("Bridge ${prefs.customBridgeLine}")
                     }
                 }
                 "snowflake" -> {
-                    lines.add("ClientTransportPlugin snowflake exec ${File(applicationContext.filesDir, "tor/snowflake-client").absolutePath}")
+                    // snowflake (built into Tor 0.4.9+)
                     if (!prefs.customBridgeLine.isNullOrEmpty()) {
                         lines.add("Bridge ${prefs.customBridgeLine}")
                     }
@@ -324,9 +279,9 @@ class NexusVpnService : VpnService() {
             }
         }
 
-        // GeoIP
-        val geoip = File(applicationContext.filesDir, "tor/geoip")
-        val geoip6 = File(applicationContext.filesDir, "tor/geoip6")
+        // GeoIP (from torDir where we copied them)
+        val geoip = File(torrc.parentFile, "geoip")
+        val geoip6 = File(torrc.parentFile, "geoip6")
         if (geoip.exists()) lines.add("GeoIPFile ${geoip.absolutePath}")
         if (geoip6.exists()) lines.add("GeoIPv6File ${geoip6.absolutePath}")
 
