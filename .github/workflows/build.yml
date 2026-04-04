@@ -118,6 +118,7 @@ jobs:
             android/app/build/outputs/apk/release/*.apk
           retention-days: 30
           if-no-files-found: error
+          overwrite: true
 
   # Release job (only on push to main)
   release:
@@ -172,12 +173,10 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag_name }}
           name: "Nexus VPN ${{ steps.tag.outputs.tag_name }}"
           body_path: release_notes.md
-          files: |
-            release-apks/app-debug.apk
-            release-apks/app-release-unsigned.apk
+          files: release-apks/*.apk
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
