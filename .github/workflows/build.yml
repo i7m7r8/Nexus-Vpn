@@ -49,6 +49,15 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Download tor-android AAR and extract libtor.so
+      - name: Get Tor Binary
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          curl -fSL "https://raw.githubusercontent.com/guardianproject/gpmaven/master/info/guardianproject/tor-android/0.4.8.17.2/tor-android-0.4.8.17.2.aar" -o /tmp/tor.aar
+          unzip -p /tmp/tor.aar jni/arm64-v8a/libtor.so > android/app/src/main/jniLibs/arm64-v8a/libtor.so
+          ls -lh android/app/src/main/jniLibs/arm64-v8a/libtor.so
+          rm -f /tmp/tor.aar
+
       - name: Generate Gradle Wrapper
         working-directory: android
         run: |
