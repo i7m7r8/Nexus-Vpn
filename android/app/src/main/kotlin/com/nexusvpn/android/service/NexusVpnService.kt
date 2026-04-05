@@ -189,8 +189,8 @@ class NexusVpnService : VpnService() {
             lines.add("UseBridges 1")
             lines.add("Bridge ${prefs.customBridgeLine}")
         }
-        listOf("geoip" to "GeoIPFile", "geoip6" to "GeoIPv6File").forEach { file, key ->
-            val f = File(torrc.parent, file)
+        listOf("geoip" to "GeoIPFile", "geoip6" to "GeoIPv6File").forEach { (file, key) ->
+            val f = File(torDir, file)
             if (f.exists()) lines.add("$key ${f.absolutePath}")
         }
         FileWriter(torrc).use { it.write(lines.joinToString("\n")) }

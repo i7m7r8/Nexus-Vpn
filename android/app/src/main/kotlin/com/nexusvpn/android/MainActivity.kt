@@ -146,11 +146,12 @@ fun HomeScreen(darkBg: Color, cardBg: Color, green: Color, purple: Color) {
         val filter = IntentFilter(NexusVpnService.ACTION_STATUS)
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                val status = intent.getStringExtra(NexusVpnService.EXTRA_STATUS) ?: "Disconnected"
                 vpnStatus = VpnStatus(
-                    connected = intent.getStringExtra(NexusVpnService.EXTRA_STATUS) != "Disconnected",
-                    statusText = intent.getStringExtra(NexusVpnService.EXTRA_STATUS) ?: "Disconnected",
-                    sniHost = intent.getStringExtra(NexusVpnService.EXTRA_SNI) ?: "",
-                    bridgesActive = intent.getBooleanExtra(NexusVpnService.EXTRA_BRIDGES, false),
+                    connected = status != "Disconnected",
+                    statusText = status,
+                    sniHost = prefs.sniHostname ?: "",
+                    bridgesActive = prefs.useBridges,
                 )
             }
         }
