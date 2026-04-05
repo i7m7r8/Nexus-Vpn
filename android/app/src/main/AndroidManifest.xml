@@ -105,8 +105,7 @@
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:foregroundServiceType="connectedDevice"
             android:exported="false"
-            android:enabled="true"
-            android:process=":vpn_service">
+            android:enabled="true">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
