@@ -163,12 +163,10 @@ class NexusVpnService : VpnService() {
             val filter = IntentFilter().apply {
                 addAction(TorService.ACTION_STATUS)
                 addAction(TorService.ACTION_ERROR)
-                addAction(TorService.NEWNYM)
             }
             torReceiver = object : BroadcastReceiver() {
                 override fun onReceive(ctx: Context?, intent: Intent?) {
                     val status = intent?.getStringExtra(TorService.EXTRA_STATUS)
-                        ?: intent?.getStringExtra(TorService.EXTRA_MESSAGE)
                         ?: return
                     addLog(status)
 
