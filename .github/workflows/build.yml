@@ -51,30 +51,6 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Download Tor Expert Bundles for Android from official Tor Project
-      - name: Download Tor Expert Bundles
-        run: |
-          mkdir -p android/app/src/main/assets/tor
-
-          echo "Downloading Tor Expert Bundle for arm64-v8a..."
-          curl -fSL "https://dist.torproject.org/torbrowser/15.0.8/tor-expert-bundle-android-aarch64-15.0.8.tar.gz" -o /tmp/tor-arm64.tar.gz
-          mkdir -p /tmp/tor-arm64 && tar xzf /tmp/tor-arm64.tar.gz -C /tmp/tor-arm64
-          find /tmp/tor-arm64 -name "tor" -type f -exec cp {} android/app/src/main/assets/tor/tor-arm64 \;
-          chmod +x android/app/src/main/assets/tor/tor-arm64
-
-          echo "Downloading Tor Expert Bundle for x86_64..."
-          curl -fSL "https://dist.torproject.org/torbrowser/15.0.8/tor-expert-bundle-android-x86_64-15.0.8.tar.gz" -o /tmp/tor-x86_64.tar.gz
-          mkdir -p /tmp/tor-x86_64 && tar xzf /tmp/tor-x86_64.tar.gz -C /tmp/tor-x86_64
-          find /tmp/tor-x86_64 -name "tor" -type f -exec cp {} android/app/src/main/assets/tor/tor-x86_64 \;
-          chmod +x android/app/src/main/assets/tor/tor-x86_64
-
-          echo "Copying geoip files..."
-          find /tmp/tor-arm64 /tmp/tor-x86_64 -name "geoip" -type f -exec cp {} android/app/src/main/assets/tor/ \; 2>/dev/null || true
-          find /tmp/tor-arm64 /tmp/tor-x86_64 -name "geoip6" -type f -exec cp {} android/app/src/main/assets/tor/ \; 2>/dev/null || true
-
-          echo "=== Tor binaries ==="
-          ls -lh android/app/src/main/assets/tor/ || echo "No Tor binaries found"
-
       - name: Generate Gradle Wrapper
         working-directory: android
         run: |
