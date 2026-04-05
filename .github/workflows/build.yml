@@ -46,37 +46,6 @@ jobs:
           ndk-version: ${{ env.NDK_VERSION }}
           local-cache: true
 
-      # Compile Tor from source for Android (aarch64)
-      - name: Build Tor for Android
-        run: |
-          sudo apt-get update && sudo apt-get install -y libevent-dev libssl-dev
-          curl -fSL "https://dist.torproject.org/tor-0.4.8.17.tar.gz" -o /tmp/tor.tgz
-          mkdir -p /tmp/tb && tar xzf /tmp/tor.tgz -C /tmp/tb --strip-components=1
-          cd /tmp/tb
-          NDK=$ANDROID_NDK_LATEST_HOME
-          TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-          export PATH="$TC/bin:$PATH"
-          export AR=$TC/bin/llvm-ar RANLIB=$TC/bin/llvm-ranlib
-          export CC=$TC/bin/aarch64-linux-android31-clang
-          export CXX=$TC/bin/aarch64-linux-android31-clang++
-          export LD=$TC/bin/ld
-          export CFLAGS="-fPIE -fPIC"
-          export LDFLAGS="-fPIE -pie"
-          export ac_cv_func_setresuid=no
-          export ac_cv_func_setresgid=no
-          ./configure --host=aarch64-linux-android --disable-asciidoc --disable-manpage --disable-unittests --disable-system-torrc --disable-seccomp --with-libevent-dir=/usr --with-openssl-dir=/usr 2>&1 | tee /tmp/config.log | tail -30
-          make -j$(nproc) 2>&1 | tee /tmp/make.log | tail -30
-          mkdir -p $GITHUB_WORKSPACE/android/app/src/main/assets
-          if [ -f src/app/tor ]; then
-            cp src/app/tor $GITHUB_WORKSPACE/android/app/src/main/assets/tor
-            chmod +x $GITHUB_WORKSPACE/android/app/src/main/assets/tor
-            echo "✅ Tor binary built: $(ls -lh $GITHUB_WORKSPACE/android/app/src/main/assets/tor)"
-          else
-            echo "❌ Tor binary not found at src/app/tor"
-            find src -name "tor" -type f 2>/dev/null
-          fi
-          rm -rf /tmp/tor.tgz /tmp/tb
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 

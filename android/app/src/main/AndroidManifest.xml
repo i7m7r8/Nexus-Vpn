@@ -111,6 +111,12 @@
             </intent-filter>
         </service>
 
+        <!-- Guardian Project TorService (manages Tor daemon) -->
+        <service
+            android:name="org.torproject.jni.TorService"
+            android:exported="false"
+            android:enabled="true" />
+
         <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"
