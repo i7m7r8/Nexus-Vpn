@@ -49,18 +49,25 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Download Tor binary from Tor Project and put in assets
-      - name: Download Tor Binary
+      # Compile Tor from source for Android
+      - name: Compile Tor for Android
         run: |
-          mkdir -p android/app/src/main/assets
-          curl -fSL "https://archive.torproject.org/tor-package-archive/torbrowser/14.0.5/tor-expert-bundle-android-aarch64-14.0.5.tar.gz" -o /tmp/tor.tgz
-          mkdir -p /tmp/te && tar xzf /tmp/tor.tgz -C /tmp/se
-          find /tmp/se -name "tor" -type f -exec cp {} android/app/src/main/assets/tor \;
-          chmod +x android/app/src/main/assets/tor
-          find /tmp/se -name "geoip" -type f -exec cp {} android/app/src/main/assets/ \;
-          find /tmp/se -name "geoip6" -type f -exec cp {} android/app/src/main/assets/ \;
-          ls -lh android/app/src/main/assets/tor
-          rm -rf /tmp/tor.tgz /tmp/te /tmp/se
+          sudo apt-get update && sudo apt-get install -y libevent-dev libssl-dev
+          curl -fSL "https://dist.torproject.org/tor-0.4.8.17.tar.gz" -o /tmp/tor-src.tar.gz
+          mkdir -p /tmp/tor-build && tar xzf /tmp/tor-src.tar.gz -C /tmp/tor-build --strip-components=1
+          cd /tmp/tor-build
+          NDK=$ANDROID_NDK_LATEST_HOME
+          TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64
+          export AR=$TC/bin/llvm-ar CC=$TC/bin/aarch64-linux-android31-clang
+          ./configure --host=aarch64-linux-android --disable-asciidoc --disable-manpage --disable-unittests --disable-system-torrc --with-libevent-dir=/usr --with-openssl-dir=/usr
+          make -j$(nproc)
+          mkdir -p $GITHUB_WORKSPACE/android/app/src/main/assets
+          cp src/app/tor $GITHUB_WORKSPACE/android/app/src/main/assets/tor
+          chmod +x $GITHUB_WORKSPACE/android/app/src/main/assets/tor
+          find . -name "geoip" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null
+          find . -name "geoip6" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null
+          ls -lh $GITHUB_WORKSPACE/android/app/src/main/assets/tor
+          rm -rf /tmp/tor-src.tar.gz /tmp/tor-build
 
       - name: Generate Gradle Wrapper
         working-directory: android
