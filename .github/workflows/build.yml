@@ -11,10 +11,8 @@ env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: "stable"
   NDK_VERSION: "r27b"
-  TOR_VERSION: "14.0.5"
 
 jobs:
-  # Build job for all variants
   build:
     name: Build Nexus VPN
     runs-on: ubuntu-24.04
@@ -51,16 +49,28 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Download Tor Expert Bundle and extract tor binary
+      - name: Download Tor Binary
+        run: |
+          mkdir -p android/app/src/main/assets
+          curl -fSL "https://dist.torproject.org/torbrowser/15.0.8/tor-expert-bundle-android-aarch64-15.0.8.tar.gz" -o /tmp/tor.tar.gz
+          mkdir -p /tmp/tor-extract
+          tar xzf /tmp/tor.tar.gz -C /tmp/tor-extract
+          cp /tmp/tor-extract/tor/tor android/app/src/main/assets/tor
+          chmod +x android/app/src/main/assets/tor
+          cp /tmp/tor-extract/data/geoip android/app/src/main/assets/ 2>/dev/null || true
+          cp /tmp/tor-extract/data/geoip6 android/app/src/main/assets/ 2>/dev/null || true
+          ls -lh android/app/src/main/assets/tor
+          rm -rf /tmp/tor.tar.gz /tmp/tor-extract
+
       - name: Generate Gradle Wrapper
         working-directory: android
         run: |
           curl -fSL "https://services.gradle.org/distributions/gradle-8.10-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/
-          GRADLE_HOME=/tmp/gradle-8.10
-          $GRADLE_HOME/bin/gradle wrapper --gradle-version 8.10
+          /tmp/gradle-8.10/bin/gradle wrapper --gradle-version 8.10
           rm -rf /tmp/gradle.zip /tmp/gradle-8.10
 
-      # Build Rust lib for both architectures
       - name: Build Rust lib (arm64-v8a)
         working-directory: rust-core
         run: |
@@ -71,7 +81,6 @@ jobs:
         run: |
           cargo ndk -t x86_64 -o ../android/app/src/main/jniLibs build --release
 
-      # Build Android APKs
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
@@ -80,22 +89,17 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
 
-      # Debug: List built APKs and check native libraries
       - name: Check APK contents
         if: always()
         run: |
-          echo "=== Built APKs ==="
-          find android/app/build/outputs/apk -name "*.apk" -ls 2>/dev/null || echo "No APKs found!"
-
           APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
           if [ -f "$APK" ]; then
-            echo "=== Native libs in APK ==="
-            unzip -l "$APK" | grep -E "\.so$" || echo "No .so files!"
+            echo "=== Native libs ==="
+            unzip -l "$APK" | grep "\.so$" || echo "No .so files"
             echo "=== Tor assets ==="
-            unzip -l "$APK" | grep -i "tor" || echo "No tor files in assets!"
+            unzip -l "$APK" | grep "tor" || echo "No tor files"
           fi
 
-      # Upload APKs as artifacts
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
@@ -107,7 +111,6 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-  # Release job (only on push to main)
   release:
     name: Create GitHub Release
     needs: build
@@ -124,31 +127,19 @@ jobs:
           name: nexus-vpn-apks
           path: release-apks
 
-      - name: List downloaded APKs
-        run: |
-          echo "=== Downloaded APKs ==="
-          ls -lh release-apks/
-          APK_COUNT=$(find release-apks -name "*.apk" | wc -l)
-          echo "Found $APK_COUNT APK(s)"
+      - name: List APKs
+        run: ls -lh release-apks/
 
       - name: Generate Release Tag
         id: tag
         run: |
           TAG_NAME="v$(date +%Y%m%d.%H%M%S)"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "Release tag: $TAG_NAME"
 
       - name: Generate Release Notes
         run: |
-          echo "## Changes in this build" > release_notes.md
-          echo "" >> release_notes.md
+          echo "## Changes" > release_notes.md
           git log --pretty=format:"- %s (%h)" -20 >> release_notes.md
-          echo "" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "## APK Variants" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "- **app-debug.apk** - Debug build for testing" >> release_notes.md
-          echo "- **app-release-unsigned.apk** - Release build (unsigned)" >> release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -162,8 +153,3 @@ jobs:
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release Summary
-        run: |
-          echo "✅ Release created: ${{ steps.tag.outputs.tag_name }}"
-          echo "📦 APKs uploaded to release"
