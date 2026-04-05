@@ -57,15 +57,15 @@ jobs:
           mkdir -p android/app/src/main/assets/tor
 
           echo "Downloading Tor Expert Bundle for arm64-v8a..."
-          curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-aarch64-${{ env.TOR_VERSION }}.tar.gz" -o /tmp/tor-arm64.tar.gz
+          curl -fSL "https://dist.torproject.org/torbrowser/15.0.8/tor-expert-bundle-android-aarch64-15.0.8.tar.gz" -o /tmp/tor-arm64.tar.gz
           tar xzf /tmp/tor-arm64.tar.gz -C /tmp/
-          find /tmp -maxdepth 1 -type d -name "tor-arm64-*" -exec cp {}/tor android/app/src/main/assets/tor/tor-arm64 \;
+          find /tmp -name "tor" -type f -exec cp {} android/app/src/main/assets/tor/tor-arm64 \;
           chmod +x android/app/src/main/assets/tor/tor-arm64
 
           echo "Downloading Tor Expert Bundle for x86_64..."
-          curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-x86_64-${{ env.TOR_VERSION }}.tar.gz" -o /tmp/tor-x86_64.tar.gz
+          curl -fSL "https://dist.torproject.org/torbrowser/15.0.8/tor-expert-bundle-android-x86_64-15.0.8.tar.gz" -o /tmp/tor-x86_64.tar.gz
           tar xzf /tmp/tor-x86_64.tar.gz -C /tmp/
-          find /tmp -maxdepth 1 -type d -name "tor-x86_64-*" -exec cp {}/tor android/app/src/main/assets/tor/tor-x86_64 \;
+          find /tmp -name "tor" -type f -exec cp {} android/app/src/main/assets/tor/tor-x86_64 \;
           chmod +x android/app/src/main/assets/tor/tor-x86_64
 
           echo "Copying geoip files..."
