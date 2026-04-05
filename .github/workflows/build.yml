@@ -58,14 +58,19 @@ jobs:
           cd /tmp/tor-build
           NDK=$ANDROID_NDK_LATEST_HOME
           TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-          export AR=$TC/bin/llvm-ar CC=$TC/bin/aarch64-linux-android31-clang
-          ./configure --host=aarch64-linux-android --disable-asciidoc --disable-manpage --disable-unittests --disable-system-torrc --with-libevent-dir=/usr --with-openssl-dir=/usr
+          export PATH="$TC/bin:$PATH"
+          export AR=$TC/bin/llvm-ar
+          export RANLIB=$TC/bin/llvm-ranlib
+          export CC=$TC/bin/aarch64-linux-android31-clang
+          export CFLAGS="-fPIE -fPIC"
+          export LDFLAGS="-fPIE -pie -llog"
+          ./configure --host=aarch64-linux-android --disable-asciidoc --disable-manpage --disable-unittests --disable-system-torrc --disable-tool-name-check --with-libevent-dir=/usr --with-openssl-dir=/usr
           make -j$(nproc)
           mkdir -p $GITHUB_WORKSPACE/android/app/src/main/assets
           cp src/app/tor $GITHUB_WORKSPACE/android/app/src/main/assets/tor
           chmod +x $GITHUB_WORKSPACE/android/app/src/main/assets/tor
-          find . -name "geoip" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null
-          find . -name "geoip6" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null
+          find . -name "geoip" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null || true
+          find . -name "geoip6" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null || true
           ls -lh $GITHUB_WORKSPACE/android/app/src/main/assets/tor
           rm -rf /tmp/tor-src.tar.gz /tmp/tor-build
 
