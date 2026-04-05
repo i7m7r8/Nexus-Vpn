@@ -91,7 +91,7 @@ class NexusVpnService : VpnService() {
 
             val torrc = File(torDir, "torrc")
             val dataDir = File(torDir, "data").apply { mkdirs() }
-            writeTorrc(torrc, dataDir, sni, prefs)
+            writeTorrc(torrc, dataDir, sni, prefs, torDir)
             addLog("torrc generated")
 
             launchTorProcess(torBinary, torrc)
@@ -177,7 +177,7 @@ class NexusVpnService : VpnService() {
         }
     }
 
-    private fun writeTorrc(torrc: File, dataDir: File, sni: String, prefs: com.nexusvpn.android.data.Prefs) {
+    private fun writeTorrc(torrc: File, dataDir: File, sni: String, prefs: com.nexusvpn.android.data.Prefs, torDir: File) {
         val lines = mutableListOf(
             "RunAsDaemon 0", "AvoidDiskWrites 1",
             "DataDirectory ${dataDir.absolutePath}",
