@@ -49,19 +49,18 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Download Tor Expert Bundle and extract tor binary
+      # Download Tor binary from Tor Project and put in assets
       - name: Download Tor Binary
         run: |
           mkdir -p android/app/src/main/assets
-          curl -fSL "https://dist.torproject.org/torbrowser/15.0.8/tor-expert-bundle-android-aarch64-15.0.8.tar.gz" -o /tmp/tor.tar.gz
-          mkdir -p /tmp/tor-extract
-          tar xzf /tmp/tor.tar.gz -C /tmp/tor-extract
-          find /tmp/tor-extract -name "tor" -type f -exec cp {} android/app/src/main/assets/tor \;
+          curl -fSL "https://archive.torproject.org/tor-package-archive/torbrowser/14.0.5/tor-expert-bundle-android-aarch64-14.0.5.tar.gz" -o /tmp/tor.tgz
+          mkdir -p /tmp/te && tar xzf /tmp/tor.tgz -C /tmp/se
+          find /tmp/se -name "tor" -type f -exec cp {} android/app/src/main/assets/tor \;
           chmod +x android/app/src/main/assets/tor
-          find /tmp/tor-extract -name "geoip" -exec cp {} android/app/src/main/assets/ \; 2>/dev/null || true
-          find /tmp/tor-extract -name "geoip6" -exec cp {} android/app/src/main/assets/ \; 2>/dev/null || true
+          find /tmp/se -name "geoip" -type f -exec cp {} android/app/src/main/assets/ \;
+          find /tmp/se -name "geoip6" -type f -exec cp {} android/app/src/main/assets/ \;
           ls -lh android/app/src/main/assets/tor
-          rm -rf /tmp/tor.tar.gz /tmp/tor-extract
+          rm -rf /tmp/tor.tgz /tmp/te /tmp/se
 
       - name: Generate Gradle Wrapper
         working-directory: android
@@ -94,10 +93,10 @@ jobs:
         run: |
           APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
           if [ -f "$APK" ]; then
-            echo "=== Native libs ==="
-            unzip -l "$APK" | grep "\.so$" || echo "No .so files"
-            echo "=== Tor assets ==="
-            unzip -l "$APK" | grep "tor" || echo "No tor files"
+            echo "=== .so files ==="
+            unzip -l "$APK" | grep "\.so$" || echo "none"
+            echo "=== Tor asset ==="
+            unzip -l "$APK" | grep "assets/tor" || echo "none"
           fi
 
       - name: Upload APKs
