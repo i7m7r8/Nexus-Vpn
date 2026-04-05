@@ -89,7 +89,7 @@ class NexusVpnService : VpnService() {
             startForeground(NOTIF_ID, notif("Starting Tor..."))
 
             // Start Guardian Project TorService
-            val torIntent = Intent(this, org.torproject.android.service.TorService::class.java)
+            val torIntent = Intent(this, org.torproject.jni.TorService::class.java)
             startService(torIntent)
             Log.i(TAG, "✅ Guardian Project TorService started")
 
@@ -171,11 +171,10 @@ class NexusVpnService : VpnService() {
         try { tunFd?.close() } catch (_: Exception) {}
         tunFd = null
 
-        // Stop Tor process
+        // Stop Guardian Project TorService
         try {
-            torProcess?.destroy()
-            torProcess?.waitFor()
-            torProcess = null
+            stopService(Intent(this, org.torproject.jni.TorService::class.java))
+            Log.i(TAG, "✅ TorService stopped")
         } catch (_: Exception) {}
 
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
