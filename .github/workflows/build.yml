@@ -56,10 +56,10 @@ jobs:
           curl -fSL "https://dist.torproject.org/torbrowser/15.0.8/tor-expert-bundle-android-aarch64-15.0.8.tar.gz" -o /tmp/tor.tar.gz
           mkdir -p /tmp/tor-extract
           tar xzf /tmp/tor.tar.gz -C /tmp/tor-extract
-          cp /tmp/tor-extract/tor/tor android/app/src/main/assets/tor
+          find /tmp/tor-extract -name "tor" -type f -exec cp {} android/app/src/main/assets/tor \;
           chmod +x android/app/src/main/assets/tor
-          cp /tmp/tor-extract/data/geoip android/app/src/main/assets/ 2>/dev/null || true
-          cp /tmp/tor-extract/data/geoip6 android/app/src/main/assets/ 2>/dev/null || true
+          find /tmp/tor-extract -name "geoip" -exec cp {} android/app/src/main/assets/ \; 2>/dev/null || true
+          find /tmp/tor-extract -name "geoip6" -exec cp {} android/app/src/main/assets/ \; 2>/dev/null || true
           ls -lh android/app/src/main/assets/tor
           rm -rf /tmp/tor.tar.gz /tmp/tor-extract
 
