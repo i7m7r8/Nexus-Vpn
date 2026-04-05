@@ -49,31 +49,6 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Compile Tor from source for Android
-      - name: Compile Tor for Android
-        run: |
-          sudo apt-get update && sudo apt-get install -y libevent-dev libssl-dev
-          curl -fSL "https://dist.torproject.org/tor-0.4.8.17.tar.gz" -o /tmp/tor-src.tar.gz
-          mkdir -p /tmp/tor-build && tar xzf /tmp/tor-src.tar.gz -C /tmp/tor-build --strip-components=1
-          cd /tmp/tor-build
-          NDK=$ANDROID_NDK_LATEST_HOME
-          TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64
-          export PATH="$TC/bin:$PATH"
-          export AR=$TC/bin/llvm-ar
-          export RANLIB=$TC/bin/llvm-ranlib
-          export CC=$TC/bin/aarch64-linux-android31-clang
-          export CFLAGS="-fPIE -fPIC"
-          export LDFLAGS="-fPIE -pie -llog"
-          ./configure --host=aarch64-linux-android --disable-asciidoc --disable-manpage --disable-unittests --disable-system-torrc --disable-tool-name-check --with-libevent-dir=/usr --with-openssl-dir=/usr
-          make -j$(nproc)
-          mkdir -p $GITHUB_WORKSPACE/android/app/src/main/assets
-          cp src/app/tor $GITHUB_WORKSPACE/android/app/src/main/assets/tor
-          chmod +x $GITHUB_WORKSPACE/android/app/src/main/assets/tor
-          find . -name "geoip" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null || true
-          find . -name "geoip6" -exec cp {} $GITHUB_WORKSPACE/android/app/src/main/assets/ \; 2>/dev/null || true
-          ls -lh $GITHUB_WORKSPACE/android/app/src/main/assets/tor
-          rm -rf /tmp/tor-src.tar.gz /tmp/tor-build
-
       - name: Generate Gradle Wrapper
         working-directory: android
         run: |

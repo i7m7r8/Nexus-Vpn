@@ -4,18 +4,20 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.net.VpnService
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.nexusvpn.android.MainActivity
 import com.nexusvpn.android.R
 import com.nexusvpn.android.NexusVpnApplication
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 import java.io.FileWriter
 
 class NexusVpnService : VpnService() {
@@ -45,15 +47,14 @@ class NexusVpnService : VpnService() {
 
     init {
         System.loadLibrary("nexus_vpn")
-        Log.i(TAG, "✅ Native library loaded")
     }
 
     private external fun initVpnNative(tunFd: Int, sniHostname: String, bridgeConfig: String): Boolean
     private external fun stopVpnNative()
 
     private var tunFd: ParcelFileDescriptor? = null
-    private var torProcess: Process? = null
     private var isRunning = false
+    private var torReceiver: BroadcastReceiver? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -61,7 +62,6 @@ class NexusVpnService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "action=${intent?.action}")
         when (intent?.action) {
             "CONNECT" -> connect()
             "DISCONNECT" -> disconnect()
@@ -82,20 +82,18 @@ class NexusVpnService : VpnService() {
 
             startForeground(NOTIF_ID, notif("Starting Tor..."))
 
-            val torDir = File(applicationContext.filesDir, "tor").apply { mkdirs() }
-            val torBinary = prepareTorBinary(torDir)
-                ?: return fail("Tor binary missing")
-            addLog("Tor: ${torBinary.length() / 1024 / 1024}MB")
+            // Setup Tor log receiver
+            setupTorLogReceiver()
 
-            copyAssets(torDir)
+            // Start Guardian Project TorService
+            val torIntent = Intent(this, org.torproject.jni.TorService::class.java)
+            ContextCompat.startForegroundService(this, torIntent)
+            addLog("TorService starting...")
 
-            val torrc = File(torDir, "torrc")
-            val dataDir = File(torDir, "data").apply { mkdirs() }
-            writeTorrc(torrc, dataDir, sni, prefs, torDir)
-            addLog("torrc generated")
+            // Wait for Tor to bootstrap (~10s)
+            Thread.sleep(10000)
 
-            launchTorProcess(torBinary, torrc)
-
+            // Build VPN interface
             val builder = Builder()
                 .setSession("Nexus VPN")
                 .addAddress("10.8.0.2", 24)
@@ -110,6 +108,7 @@ class NexusVpnService : VpnService() {
             tunFd = builder.establish() ?: return fail("establish() returned null")
             addLog("TUN established: 10.8.0.2")
 
+            // Init native routing to SOCKS proxy on 127.0.0.1:9050
             val bc = """{"socks_port":9050,"dns_port":5400,"use_bridges":${prefs.useBridges},"bridge_type":"${prefs.bridgeType}"}"""
             try {
                 if (!initVpnNative(tunFd!!.fd, sni, bc))
@@ -132,97 +131,33 @@ class NexusVpnService : VpnService() {
         }
     }
 
-    /** Extract tor binary from native libs (Guardian Project AAR) */
-    private fun prepareTorBinary(torDir: File): File? {
-        val dest = File(torDir, "tor")
-        if (dest.exists() && dest.length() > 1_000_000) return dest
-
-        // Try from native library dir (AAR packages libtor.so)
-        val nativeDir = applicationInfo.nativeLibraryDir
-        val srcNames = listOf("libtor.so", "tor")
-
-        for (name in srcNames) {
-            val src = File(nativeDir, name)
-            if (src.exists()) {
-                src.inputStream().use { it ->
-                    dest.outputStream().use { out -> it.copyTo(out) }
-                }
-                dest.setExecutable(true, false)
-                Log.i(TAG, "Copied $name -> tor (${dest.length()} bytes)")
-                return dest
-            }
-        }
-
-        // Fallback: try assets
+    private fun setupTorLogReceiver() {
+        // Guardian Project TorService broadcasts logs
         try {
-            assets.open("tor").use { it ->
-                dest.outputStream().use { out -> it.copyTo(out) }
-            }
-            dest.setExecutable(true, false)
-            Log.i(TAG, "Extracted from assets")
-            return dest
-        } catch (_: Exception) {}
-
-        Log.e(TAG, "No tor binary found. Native dir files: ${File(nativeDir).listFiles()?.map { it.name }?.joinToString()}")
-        return null
-    }
-
-    private fun copyAssets(torDir: File) {
-        listOf("geoip", "geoip6").forEach { name ->
-            try {
-                assets.open(name).use { it ->
-                    File(torDir, name).outputStream().use { out -> it.copyTo(out) }
-                }
-            } catch (_: Exception) {}
-        }
-    }
-
-    private fun writeTorrc(torrc: File, dataDir: File, sni: String, prefs: com.nexusvpn.android.data.Prefs, torDir: File) {
-        val lines = mutableListOf(
-            "RunAsDaemon 0", "AvoidDiskWrites 1",
-            "DataDirectory ${dataDir.absolutePath}",
-            "SOCKSPort 127.0.0.1:9050", "DNSPort 127.0.0.1:5400",
-            "TransPort 127.0.0.1:9040", "HTTPTunnelPort 127.0.0.1:8118",
-            "SNI $sni", "Log notice stdout"
-        )
-        if (prefs.useBridges && !prefs.customBridgeLine.isNullOrEmpty()) {
-            lines.add("UseBridges 1")
-            lines.add("Bridge ${prefs.customBridgeLine}")
-        }
-        listOf("geoip" to "GeoIPFile", "geoip6" to "GeoIPv6File").forEach { (file, key) ->
-            val f = File(torDir, file)
-            if (f.exists()) lines.add("$key ${f.absolutePath}")
-        }
-        FileWriter(torrc).use { it.write(lines.joinToString("\n")) }
-    }
-
-    private fun launchTorProcess(torBinary: File, torrc: File) {
-        val cmd = arrayOf(torBinary.absolutePath, "-f", torrc.absolutePath)
-        Log.i(TAG, "Starting Tor: ${cmd.joinToString(" ")}")
-        addLog("Starting Tor...")
-
-        torProcess = ProcessBuilder(*cmd).apply { redirectErrorStream(true) }.start()
-
-        Thread {
-            val reader = BufferedReader(InputStreamReader(torProcess?.inputStream))
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                line?.let {
-                    Log.i("Tor", it)
-                    addLog(it)
-                    when {
-                        it.contains("Bootstrapped 100%") -> broadcastStatus("Connected — Tor ready")
-                        it.contains("Bootstrapped") -> {
-                            Regex("Bootstrapped (\\d+)%").find(it)?.groupValues?.get(1)
-                                ?.let { p -> broadcastStatus("Bootstrapping $p%") }
+            val filter = IntentFilter("org.torproject.android.intent.ACTION_STATUS")
+            torReceiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context?, intent: Intent?) {
+                    val msg = intent?.getStringExtra("status")
+                    if (msg != null) {
+                        addLog(msg)
+                        if (msg.contains("Bootstrapped 100%")) {
+                            broadcastStatus("Connected — Tor ready")
+                        } else if (msg.contains("Bootstrapped")) {
+                            val pct = Regex("(\\d+)%").find(msg)?.groupValues?.get(1)
+                            pct?.let { broadcastStatus("Bootstrapping ${it}%") }
                         }
                     }
                 }
             }
-        }.start()
-
-        Thread.sleep(1500)
-        Log.i(TAG, "Tor process started")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(torReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(torReceiver, filter)
+            }
+            addLog("Tor log receiver registered")
+        } catch (e: Exception) {
+            Log.w(TAG, "Tor log receiver failed", e)
+        }
     }
 
     private fun fail(msg: String) {
@@ -239,7 +174,8 @@ class NexusVpnService : VpnService() {
         try { stopVpnNative() } catch (_: Exception) {}
         try { tunFd?.close() } catch (_: Exception) {}
         tunFd = null
-        try { torProcess?.destroy(); torProcess = null } catch (_: Exception) {}
+        try { stopService(Intent(this, org.torproject.jni.TorService::class.java)) } catch (_: Exception) {}
+        try { torReceiver?.let { unregisterReceiver(it) }; torReceiver = null } catch (_: Exception) {}
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
         stopSelf()
         addLog("Disconnected")

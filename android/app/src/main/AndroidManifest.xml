@@ -111,6 +111,12 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name="org.torproject.jni.TorService"
+            android:exported="false"
+            android:enabled="true"
+            android:process=":tor" />
+
         <receiver
             android:name=".receiver.BootReceiver"
             android:enabled="true"
