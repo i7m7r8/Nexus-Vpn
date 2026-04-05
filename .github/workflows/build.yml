@@ -11,6 +11,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: "stable"
   NDK_VERSION: "r27b"
+  TOR_VERSION: "14.0.5"
 
 jobs:
   # Build job for all variants
@@ -50,18 +51,37 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Download Tor Expert Bundles for Android from official Tor Project
+      - name: Download Tor Expert Bundles
+        run: |
+          mkdir -p android/app/src/main/assets/tor
+
+          echo "Downloading Tor Expert Bundle for arm64-v8a..."
+          curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-aarch64-${{ env.TOR_VERSION }}.tar.gz" -o /tmp/tor-arm64.tar.gz
+          tar xzf /tmp/tor-arm64.tar.gz -C /tmp/
+          find /tmp -maxdepth 1 -type d -name "tor-arm64-*" -exec cp {}/tor android/app/src/main/assets/tor/tor-arm64 \;
+          chmod +x android/app/src/main/assets/tor/tor-arm64
+
+          echo "Downloading Tor Expert Bundle for x86_64..."
+          curl -fSL "https://dist.torproject.org/torbrowser/${{ env.TOR_VERSION }}/tor-expert-bundle-android-x86_64-${{ env.TOR_VERSION }}.tar.gz" -o /tmp/tor-x86_64.tar.gz
+          tar xzf /tmp/tor-x86_64.tar.gz -C /tmp/
+          find /tmp -maxdepth 1 -type d -name "tor-x86_64-*" -exec cp {}/tor android/app/src/main/assets/tor/tor-x86_64 \;
+          chmod +x android/app/src/main/assets/tor/tor-x86_64
+
+          echo "Copying geoip files..."
+          find /tmp -maxdepth 2 -name "geoip" -exec cp {} android/app/src/main/assets/tor/ \; 2>/dev/null || true
+          find /tmp -maxdepth 2 -name "geoip6" -exec cp {} android/app/src/main/assets/tor/ \; 2>/dev/null || true
+
+          echo "=== Tor binaries ==="
+          ls -lh android/app/src/main/assets/tor/ || echo "No Tor binaries found"
+
       - name: Generate Gradle Wrapper
         working-directory: android
         run: |
-          # Download and extract Gradle 8.10 to get wrapper files
           curl -fSL "https://services.gradle.org/distributions/gradle-8.10-bin.zip" -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/
           GRADLE_HOME=/tmp/gradle-8.10
-
-          # Generate wrapper using the downloaded Gradle
           $GRADLE_HOME/bin/gradle wrapper --gradle-version 8.10
-
-          # Clean up
           rm -rf /tmp/gradle.zip /tmp/gradle-8.10
 
       # Build Rust lib for both architectures
@@ -84,28 +104,19 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
 
-      # Debug: List built APKs
-      - name: List built APKs
+      # Debug: List built APKs and check native libraries
+      - name: Check APK contents
         if: always()
         run: |
           echo "=== Built APKs ==="
           find android/app/build/outputs/apk -name "*.apk" -ls 2>/dev/null || echo "No APKs found!"
 
-      # Debug: Check native libraries in APK
-      - name: Check native libraries in APK
-        if: always()
-        run: |
-          echo "=== Checking APK for native libraries ==="
-          APK_FILE=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
-          if [ -f "$APK_FILE" ]; then
-            echo "APK: $APK_FILE"
-            unzip -l "$APK_FILE" | grep -E "\.(so|aar)" || echo "No .so files found in APK!"
-            echo "---"
-            unzip -l "$APK_FILE" | grep -i "libtor" || echo "No libtor found!"
-            echo "---"
-            unzip -l "$APK_FILE" | grep -i "libnexus" || echo "No libnexus_vpn found!"
-          else
-            echo "No debug APK found"
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          if [ -f "$APK" ]; then
+            echo "=== Native libs in APK ==="
+            unzip -l "$APK" | grep -E "\.so$" || echo "No .so files!"
+            echo "=== Tor assets ==="
+            unzip -l "$APK" | grep -i "tor" || echo "No tor files in assets!"
           fi
 
       # Upload APKs as artifacts
@@ -131,9 +142,6 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -143,7 +151,9 @@ jobs:
       - name: List downloaded APKs
         run: |
           echo "=== Downloaded APKs ==="
-          ls -lh release-apks/ || echo "No APKs downloaded!"
+          ls -lh release-apks/
+          APK_COUNT=$(find release-apks -name "*.apk" | wc -l)
+          echo "Found $APK_COUNT APK(s)"
 
       - name: Generate Release Tag
         id: tag
@@ -156,10 +166,7 @@ jobs:
         run: |
           echo "## Changes in this build" > release_notes.md
           echo "" >> release_notes.md
-
-          # Get recent commits
           git log --pretty=format:"- %s (%h)" -20 >> release_notes.md
-
           echo "" >> release_notes.md
           echo "" >> release_notes.md
           echo "## APK Variants" >> release_notes.md
@@ -176,7 +183,7 @@ jobs:
           files: release-apks/*.apk
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

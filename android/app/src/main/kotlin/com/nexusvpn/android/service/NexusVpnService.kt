@@ -105,16 +105,17 @@ class NexusVpnService : VpnService() {
             startForeground(NOTIF_ID, notif("Starting Tor..."))
             Log.i(TAG, "✅ startForeground called")
 
-            // Step 1: Get Tor binary (libtor.so from native lib dir)
+            // Step 1: Extract Tor binary from assets
             val torDir = File(applicationContext.filesDir, "tor")
             torDir.mkdirs()
             val torBinary = extractTorBinary(torDir)
             if (torBinary == null) {
-                Log.e(TAG, "❌ Failed to find libtor.so")
+                Log.e(TAG, "❌ Failed to find Tor binary in assets")
                 broadcastStatus("Error: Tor binary missing")
                 isRunning = false
                 return
             }
+            Log.i(TAG, "✅ Tor binary ready: ${torBinary.absolutePath} (${torBinary.length()} bytes)")
 
             // Step 2: Copy geoip files from assets to torDir
             copyGeoipFiles(torDir)
@@ -205,33 +206,46 @@ class NexusVpnService : VpnService() {
     }
 
     private fun extractTorBinary(torDir: File): File? {
-        Log.i(TAG, "🔍 Looking for libtor.so...")
-        Log.i(TAG, "📂 Native lib dir: ${applicationInfo.nativeLibraryDir}")
-        Log.i(TAG, "📂 Supported ABIs: ${Build.SUPPORTED_ABIS.joinToString(", ")}")
-
-        // List all files in native library directory
-        val nativeLibDir = applicationInfo.nativeLibraryDir
-        val nativeFiles = File(nativeLibDir).listFiles()?.map { it.name } ?: emptyList()
-        Log.i(TAG, "📁 Files in native lib dir: ${nativeFiles.joinToString(", ")}")
-
-        // Try to find libtor.so (from tor-android AAR dependency)
-        val torBinary = File(nativeLibDir, "libtor.so")
-
-        if (!torBinary.exists()) {
-            Log.e(TAG, "❌ libtor.so not found in $nativeLibDir")
-            Log.e(TAG, "📋 Available files: ${nativeFiles.joinToString(", ")}")
-            Log.e(TAG, "💡 Make sure tor-android AAR dependency is properly included")
-            return null
+        val abi = when {
+            Build.SUPPORTED_ABIS.any { it.contains("arm64") || it.contains("aarch64") } -> "arm64"
+            Build.SUPPORTED_ABIS.any { it.contains("x86_64") } -> "x86_64"
+            else -> {
+                Log.e(TAG, "❌ Unsupported ABI: ${Build.SUPPORTED_ABIS.joinToString()}")
+                return null
+            }
         }
 
-        // Verify it's a valid file and has reasonable size (>1MB)
-        if (torBinary.length() < 1_000_000) {
-            Log.e(TAG, "❌ libtor.so seems corrupted (size: ${torBinary.length()} bytes)")
-            return null
+        val assetName = "tor-$abi"
+        val destFile = File(torDir, "tor")
+
+        // Check if already extracted
+        if (destFile.exists() && destFile.canExecute() && destFile.length() > 1_000_000) {
+            Log.i(TAG, "✅ Tor binary already extracted: ${destFile.absolutePath}")
+            return destFile
         }
 
-        Log.i(TAG, "✅ Found libtor.so: ${torBinary.absolutePath} (${torBinary.length()} bytes)")
-        return torBinary
+        // Extract from assets
+        return try {
+            Log.i(TAG, "📦 Extracting Tor binary from assets: $assetName")
+            assets.open(assetName).use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            destFile.setExecutable(true, false)
+            destFile.setReadable(true, false)
+
+            if (!destFile.canExecute()) {
+                Log.e(TAG, "❌ Failed to make Tor binary executable")
+                return null
+            }
+
+            Log.i(TAG, "✅ Tor binary extracted: ${destFile.absolutePath} (${destFile.length()} bytes)")
+            destFile
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to extract Tor binary from assets", e)
+            null
+        }
     }
 
     private fun copyGeoipFiles(torDir: File) {
